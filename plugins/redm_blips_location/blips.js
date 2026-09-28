@@ -74,7 +74,7 @@ export function formatVec(p) {
 
 export const ICON_KEYS = ['pin', 'shop', 'npc', 'house', 'camp', 'quest', 'danger', 'info'];
 
-const ICON_ALIASES = {
+export const ICON_ALIASES = {
   shop: ['shop', 'store', 'ร้าน', 'ร้านค้า'],
   npc: ['npc', 'person', 'people', 'คน'],
   house: ['house', 'home', 'บ้าน'],
@@ -92,7 +92,7 @@ export function iconKey(value) {
   return 'pin';
 }
 
-const NAMED_COLORS = {
+export const NAMED_COLORS = {
   red: '#e5484d',
   orange: '#f76b15',
   yellow: '#ffc53d',
@@ -115,7 +115,7 @@ export function safeColor(value) {
 
 /* ---------------- อ่าน blip จากการ์ด ---------------- */
 
-const FIELD_ALIASES = {
+export const FIELD_ALIASES = {
   coords: ['coords', 'coord', 'coordinates', 'pos', 'position', 'location', 'loc', 'พิกัด', 'ตำแหน่ง'],
   name: ['name', 'title', 'label', 'ชื่อ'],
   icon: ['icon', 'type', 'sprite', 'ไอคอน', 'ประเภท'],
@@ -130,7 +130,7 @@ const FIELD_ALIASES = {
 };
 
 /** ช่องที่เก็บได้หลายค่า (คั่นด้วย , หรือเขียนเป็นรายการย่อย) */
-const LIST_FIELDS = new Set(['sells', 'sound']);
+export const LIST_FIELDS = new Set(['sells', 'sound']);
 
 export const FIELD_LABELS = {
   role: 'หน้าที่',
@@ -141,7 +141,7 @@ export const FIELD_LABELS = {
   note: 'หมายเหตุ',
 };
 
-function fieldKey(raw) {
+export function fieldKey(raw) {
   const k = String(raw).trim().toLowerCase();
   for (const [key, names] of Object.entries(FIELD_ALIASES)) if (names.includes(k)) return key;
   return null;
@@ -371,6 +371,145 @@ export function parseBlips(body, { title = '', autoDetect = true } = {}) {
   }
 
   return { blips, problems, blocks };
+}
+
+/* ---------------- เคอร์เซอร์อยู่ตรงไหนของบล็อก !blip (ไว้ให้คำแนะนำตอนพิมพ์) ---------------- */
+
+const NAME_CHARS = 'A-Za-z0-9\\u0E00-\\u0E7F_';
+const COMMAND_AT = /^(\s*(?:[-*+]\s+)?)!([A-Za-z]*)$/;
+const NAME_AT = new RegExp(`^(\\s*)([-*+]\\s+)?([${NAME_CHARS}]*)$`);
+const NAME_REST = new RegExp(`^[${NAME_CHARS}]*\\s*$`);
+const VALUE_AT = new RegExp(`^\\s*(?:[-*+]\\s+)?([A-Za-z\\u0E00-\\u0E7F_][${NAME_CHARS} ]{0,29}?)\\s*[:=：]\\s*`);
+const BULLET_AT = /^\s*[-*+]\s+/;
+
+/**
+ * ตำแหน่ง offset ในเนื้อหาการ์ดอยู่ตรงไหนของบล็อก !blip — คืนหนึ่งในนี้ หรือ null ถ้าไม่เกี่ยว
+ *   { kind: 'command', from, to }                              พิมพ์ ! ต้นบรรทัด (เลือกแม่แบบ !blip)
+ *   { kind: 'field', from, to, bullet, used }                   ตำแหน่งชื่อช่องในบล็อก · bullet = บรรทัดมีขีดนำแล้ว · used = ช่องที่มีแล้ว
+ *   { kind: 'value', key, label, from, to, value, used, item }  หลัง "ชื่อช่อง:" หรือรายการย่อยใต้ช่อง
+ *                                                               (ช่องแบบรายการ เช่น sells = เฉพาะรายการที่เคอร์เซอร์อยู่)
+ * from–to = ช่วงที่คำแนะนำจะไปแทนที่ · value = ข้อความที่พิมพ์ไว้ก่อนเคอร์เซอร์ในช่วงนั้น
+ */
+export function blipContext(text, offset) {
+  const src = String(text ?? '');
+  const at = Math.max(0, Math.min(Number(offset) || 0, src.length));
+  const lines = src.split('\n');
+  let i = 0;
+  let start = 0;
+  for (let nl = src.indexOf('\n'); nl !== -1 && nl < at; nl = src.indexOf('\n', nl + 1)) {
+    i++;
+    start = nl + 1;
+  }
+  const line = lines[i];
+  const before = line.slice(0, at - start);
+  const after = line.slice(at - start);
+
+  // ในบล็อกโค้ด ``` ไม่นับ (กติกาเดียวกับตอนอ่าน blip)
+  let fence = false;
+  for (let k = 0; k < i; k++) {
+    if (fence) {
+      if (FENCE_ANY.test(lines[k])) fence = false;
+    } else if (FENCE_OPEN.test(lines[k])) fence = true;
+  }
+  if (fence) return null;
+
+  // 1) พิมพ์ "!" ต้นบรรทัด
+  const cmd = before.match(COMMAND_AT);
+  if (cmd && /^[A-Za-z]*\s*$/.test(after)) {
+    return { kind: 'command', from: start + cmd[1].length, to: at + after.match(/^[A-Za-z]*/)[0].length };
+  }
+  if (BLIP_START.test(line)) return null;
+
+  // 2) อยู่ในบล็อกไหม — ไล่ขึ้นไปหาหัวบล็อก (ระหว่างทางต้องเป็นช่องหรือรายการย่อยทุกบรรทัด)
+  let head = -1;
+  for (let k = i - 1; k >= 0 && i - k <= 80; k--) {
+    const l = lines[k];
+    if (!l.trim()) break;
+    if (BLIP_START.test(l)) {
+      head = k;
+      break;
+    }
+    if (!FIELD_LINE.test(l) && !ITEM_LINE.test(l)) break;
+  }
+  if (head === -1) return null;
+
+  // ช่องที่มีแล้ว + ช่องที่อยู่เหนือเคอร์เซอร์ใกล้สุด (ไล่ตามกติกาเดียวกับ readBlock)
+  const used = new Set();
+  let current = null;
+  let parent = null;
+  for (let k = head + 1; k < lines.length; k++) {
+    const l = lines[k];
+    if (k === i) {
+      parent = current;
+      continue;
+    }
+    if (!l.trim() || BLIP_START.test(l)) break;
+    const indent = indentOf(l);
+    if (current && indent > current.indent && ITEM_LINE.test(l)) continue; // รายการย่อยของช่องก่อนหน้า
+    const f = l.match(FIELD_LINE);
+    if (!f) {
+      if (k > i) break;
+      continue;
+    }
+    const key = fieldKey(f[1]);
+    if (key) used.add(key);
+    current = { key, indent, value: f[2].trim() };
+  }
+
+  // 3) รายการย่อยใต้ช่องที่ไม่มีค่า เช่น  - sells:\n   - ขนมปัง
+  const bullet = before.match(BULLET_AT);
+  if (bullet && parent?.key && !parent.value && indentOf(line) > parent.indent) {
+    if (!LIST_FIELDS.has(parent.key)) return null;
+    return {
+      kind: 'value',
+      key: parent.key,
+      label: parent.key,
+      from: start + bullet[0].length,
+      to: start + line.length,
+      value: before.slice(bullet[0].length),
+      used,
+      item: true,
+    };
+  }
+
+  // 4) หลัง "ชื่อช่อง:" = ค่าของช่องนั้น
+  const v = before.match(VALUE_AT);
+  if (v) {
+    const key = fieldKey(v[1]);
+    if (!key) return null; // ช่องที่ตั้งชื่อเอง — ไม่มีอะไรจะแนะนำ
+    const valueStart = start + v[0].length;
+    const typed = before.slice(v[0].length);
+    if (LIST_FIELDS.has(key)) {
+      // แนะนำทีละรายการ: ตั้งแต่หลังจุลภาคตัวล่าสุด ถึงจุลภาคตัวถัดไป
+      const cut = Math.max(typed.lastIndexOf(','), typed.lastIndexOf('，'), typed.lastIndexOf('、'));
+      const lead = cut === -1 ? 0 : cut + 1 + typed.slice(cut + 1).match(/^\s*/)[0].length;
+      const next = after.search(/[,，、]/);
+      return {
+        kind: 'value',
+        key,
+        label: v[1].trim(),
+        from: valueStart + lead,
+        to: next === -1 ? start + line.length : at + next,
+        value: typed.slice(lead),
+        used,
+        item: false,
+      };
+    }
+    return { kind: 'value', key, label: v[1].trim(), from: valueStart, to: start + line.length, value: typed, used, item: false };
+  }
+
+  // 5) ตำแหน่งชื่อช่อง (บรรทัดใหม่ในบล็อก หรือกำลังพิมพ์ชื่อช่อง)
+  const n = before.match(NAME_AT);
+  if (n && NAME_REST.test(after)) {
+    return {
+      kind: 'field',
+      from: start + n[1].length + (n[2] ? n[2].length : 0),
+      to: at + after.match(new RegExp(`^[${NAME_CHARS}]*`))[0].length,
+      bullet: Boolean(n[2]) || n[1].length > 0,
+      used,
+    };
+  }
+  return null;
 }
 
 /** ข้อความบล็อก !blip สำหรับต่อท้ายการ์ด */

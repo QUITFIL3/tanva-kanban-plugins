@@ -16,6 +16,7 @@ import {
   ICON_KEYS,
   FIELD_LABELS,
 } from './blips.js';
+import { createBlipCompletions } from './complete.js';
 
 const LEAFLET = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/';
 
@@ -825,5 +826,7 @@ export default function setup(host) {
     views: { map: createMapView(ctx) },
     cardPanel: (section, card, opts) => renderCardPanel(ctx, section, card, opts),
     cardBody: (bodyEl, card) => decorateCardBody(ctx, bodyEl, card),
+    // IntelliSense ของ !blip ตอนแก้รายละเอียดการ์ด (ต้องใช้ Tanva Kanban รุ่นที่มีคำแนะนำตอนพิมพ์)
+    completions: createBlipCompletions(host, { iconPaths: ICON_PATHS, iconLabels: ICON_LABELS }),
   };
 }

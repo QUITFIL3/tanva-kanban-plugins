@@ -13,7 +13,9 @@ import {
   blipBlock,
   iconKey,
   safeColor,
+  blipContext,
 } from '../plugins/redm_blips_location/blips.js';
+import { createBlipCompletions } from '../plugins/redm_blips_location/complete.js';
 
 test('บล็อก !blip แบบพื้นฐาน (coords + name)', () => {
   const body = ['รายละเอียดร้าน', '', '!blip', ' - coords: vec2(-1745.5, -390.9)', ' - name: ร้านค้า'].join('\n');
@@ -154,4 +156,138 @@ test('อ่าน/เขียนพิกัดและบล็อกหล�
   assert.equal(iconKey('อะไรก็ไม่รู้'), 'pin');
   assert.equal(safeColor('#ABC'), '#aabbcc');
   assert.equal(safeColor('javascript:alert(1)'), null);
+});
+
+/* ---------------- คำแนะนำตอนพิมพ์ (IntelliSense) ---------------- */
+
+/** ตำแหน่งเคอร์เซอร์ = ตรงที่มี | ในข้อความ */
+const at = (s) => ({ text: s.replace('|', ''), offset: s.indexOf('|') });
+
+const fakeHost = (cards = []) => ({
+  settings: () => ({ autoDetect: true }),
+  board: () => ({ cards }),
+});
+const PATHS = { pin: 'P', shop: 'S', npc: 'N', house: 'H', camp: 'C', quest: 'Q', danger: 'D', info: 'I' };
+const suggest = (s, { card = null, cards = [], trigger = 'typing' } = {}) => {
+  const { text, offset } = at(s);
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  let lineEnd = text.indexOf('\n', offset);
+  if (lineEnd === -1) lineEnd = text.length;
+  return createBlipCompletions(fakeHost(cards), { iconPaths: PATHS, iconLabels: { shop: 'ร้านค้า' } }).provide({
+    text,
+    offset,
+    lineStart,
+    line: text.slice(lineStart, lineEnd),
+    before: text.slice(lineStart, offset),
+    after: text.slice(offset, lineEnd),
+    card,
+    trigger,
+  });
+};
+
+test('บริบท: พิมพ์ ! ต้นบรรทัด = เลือกแม่แบบ !blip', () => {
+  const { text, offset } = at('รายละเอียด\n!bl|');
+  assert.deepEqual(blipContext(text, offset), { kind: 'command', from: text.indexOf('!'), to: text.length });
+  assert.equal(blipContext(...Object.values(at('- !b|'))).kind, 'command', 'หลังขีดของรายการก็ได้');
+  assert.equal(blipContext(...Object.values(at('ราคา 5!|'))), null, '! กลางประโยคไม่นับ');
+
+  const res = suggest('ร้าน\n!|');
+  assert.equal(res.items[0].label, '!blip');
+  assert.match(res.items[0].insert, /^!blip\n - coords: vec3\(\$\{1:x\}, \$\{2:y\}, \$\{3:z\}\)\n - name: \$\{4:ชื่อจุด\}\$0$/);
+  assert.ok(res.items.some((i) => i.label === '!blip ร้านค้า' && i.insert.includes(' - icon: shop')));
+  assert.ok(res.items.every((i) => i.doc.includes('```')), 'มีตัวอย่างในคำอธิบาย');
+});
+
+test('บริบท: ช่องที่ยังไม่ได้ใส่ในบล็อก (ไม่นับช่องที่มีแล้ว)', () => {
+  const s = '!blip\n - coords: vec3(1, 2, 3)\n - |\n - icon: shop';
+  const c = blipContext(...Object.values(at(s)));
+  assert.equal(c.kind, 'field');
+  assert.equal(c.bullet, true);
+  assert.deepEqual([...c.used].sort(), ['coords', 'icon']);
+
+  const res = suggest(s, { card: { title: 'ร้านปืน' } });
+  const labels = res.items.map((i) => i.label);
+  assert.ok(!labels.includes('coords') && !labels.includes('icon'));
+  assert.equal(labels[0], 'name');
+  assert.equal(res.items[0].insert, 'name: ');
+  assert.equal(res.items[0].retrigger, true, 'มีชื่อการ์ดให้เลือกต่อ');
+  assert.equal(res.items.find((i) => i.label === 'color').retrigger, true);
+  assert.equal(res.items.find((i) => i.label === 'note').retrigger, false);
+});
+
+test('บริบท: บรรทัดว่างใต้ !blip เติมขีดนำให้ และพิมพ์ชื่อไทยได้', () => {
+  const res = suggest('!blip\n|');
+  assert.equal(res.items[0].label, 'coords');
+  assert.equal(res.items[0].insert, ' - coords: ');
+  assert.equal(res.items[0].detail, 'พิกัด · จำเป็น');
+
+  const thai = suggest('!blip\n - พิ|');
+  const coords = thai.items.find((i) => i.filter.split(' ').includes('coords'));
+  assert.equal(coords.label, 'พิกัด');
+  assert.equal(coords.insert, 'พิกัด: ');
+});
+
+test('บริบท: ค่าของช่อง — ไอคอน สี พิกัดจากจุดอื่นในบอร์ด ไฟล์เสียงในการ์ด', () => {
+  const icon = blipContext(...Object.values(at('!blip\n - icon: sh|op')));
+  assert.equal(icon.kind, 'value');
+  assert.equal(icon.key, 'icon');
+  assert.equal(icon.value, 'sh');
+  const icons = suggest('!blip\n - icon: |');
+  assert.equal(icons.items.length, 8);
+  assert.deepEqual(icons.items.find((i) => i.label === 'shop'), {
+    label: 'shop',
+    detail: 'ร้านค้า',
+    icon: 'S',
+    filter: 'shop shop store ร้าน ร้านค้า',
+    doc: 'ไอคอน **ร้านค้า** บนหมุด\n\nพิมพ์แบบนี้ก็ได้: `shop` `store` `ร้าน` `ร้านค้า`',
+    insert: 'shop',
+  });
+
+  const colors = suggest('!blip\n - สี: |');
+  assert.equal(colors.items.find((i) => i.label === 'red').color, '#e5484d');
+  assert.match(colors.items.find((i) => i.label === 'red').filter, /แดง/);
+
+  const cards = [
+    { id: 'a', number: 3, title: 'ร้านค้า', body: '!blip\n - coords: vec3(-322.25, 803.97, 117.88)\n - name: ร้านค้า Valentine\n - icon: shop\n - sells: ขนมปัง, นม' },
+  ];
+  const coords = suggest('!blip\n - coords: |', { cards });
+  assert.equal(coords.items[0].label, 'vec3(x, y, z)');
+  const other = coords.items.find((i) => i.label === 'vec3(-322.25, 803.97, 117.88)');
+  assert.equal(other.detail, 'ร้านค้า Valentine');
+  assert.equal(other.icon, 'S');
+  assert.equal(suggest('!blip\n - coords: vec3(1, 2, 3)|', { cards }), null, 'พิมพ์พิกัดครบแล้วไม่เด้งเอง');
+  assert.ok(suggest('!blip\n - coords: vec3(1, 2, 3)|', { cards, trigger: 'explicit' }), 'กด Ctrl+Space ยังขอดูได้');
+
+  const card = { title: 'NPC', attachments: [{ name: 'ทักทาย.wav', mime: 'audio/wav' }, { name: 'รูป.png', mime: 'image/png' }] };
+  const sound = suggest('!blip\n - sound: |', { card });
+  assert.deepEqual(sound.items.map((i) => i.insert), ['ทักทาย.wav']);
+  assert.match(suggest('!blip\n - sound: |', { card: { title: 'x' } }).items[0].insert, /^\[\$\{1:/, 'ไม่มีไฟล์เสียง = แนะนำลิงก์');
+});
+
+test('บริบท: ช่องแบบรายการ (sells) แนะนำทีละชิ้น ทั้งแบบคั่นจุลภาคและรายการย่อย', () => {
+  const inline = at('!blip\n - sells: ขนมปัง, น|, ชีส');
+  const c = blipContext(inline.text, inline.offset);
+  assert.equal(c.key, 'sells');
+  assert.equal(c.value, 'น');
+  assert.equal(inline.text.slice(c.from, c.to), 'น');
+
+  const sub = at('!blip\n - sells:\n   - ขน|');
+  const s = blipContext(sub.text, sub.offset);
+  assert.equal(s.kind, 'value');
+  assert.equal(s.item, true);
+  assert.equal(sub.text.slice(s.from, s.to), 'ขน');
+
+  const cards = [{ id: 'a', number: 1, title: 'ร้าน', body: '!blip\n - coords: vec2(1, 2)\n - sells: ขนมปัง, นม, ชีส' }];
+  const res = suggest('!blip\n - sells: นม, |', { cards });
+  assert.deepEqual(res.items.map((i) => i.label), ['ขนมปัง', 'ชีส'], 'ของที่ใส่แล้วไม่แนะนำซ้ำ');
+});
+
+test('บริบท: ไม่เกี่ยวกับ !blip = ไม่แนะนำอะไร', () => {
+  assert.equal(suggest('สวัสดี|'), null);
+  assert.equal(suggest('- งานที่ต้องทำ|'), null);
+  assert.equal(suggest('```\n!bl|\n```'), null, 'ในบล็อกโค้ดไม่นับ');
+  assert.equal(suggest('!blip\n - ราคา: 5|'), null, 'ช่องที่ตั้งชื่อเองไม่มีคำแนะนำ');
+  assert.equal(suggest('!blip\n - co|ords: vec3(1, 2)'), null, 'ไม่แนะนำชื่อช่องทับช่องที่มีอยู่แล้ว');
+  assert.equal(suggest('!blip\n - coords: vec2(1, 2)\n\n|'), null, 'บรรทัดว่างจบบล็อกแล้ว');
+  assert.equal(suggest('!blip\n - note:\n   - |'), null, 'รายการย่อยของช่องที่ไม่ใช่รายการ');
 });
