@@ -1,6 +1,6 @@
 # Tanva Kanban Plugins
 
-คลังปลั๊กอินทางการของ [Tanva Kanban](https://github.com/QUITFIL3/tanva-kanban) — กดติดตั้ง อัปเดต และถอนได้จากในบอร์ดเลย
+คลังปลั๊กอินทางการของ **Tanva Kanban** — กดติดตั้ง อัปเดต และถอนได้จากในบอร์ดเลย
 
 [![CI](https://github.com/QUITFIL3/tanva-kanban-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/QUITFIL3/tanva-kanban-plugins/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -24,12 +24,12 @@
 
 ![เปิด/ปิดและตั้งค่าปลั๊กอินรายบอร์ด](docs/images/plugins.png)
 
-เมื่อคลังนี้มีรุ่นใหม่ หน้าต่างปลั๊กอินจะขึ้นปุ่ม **อัปเดต** ให้เอง · รายละเอียดเพิ่มเติมอยู่ใน [คู่มือปลั๊กอินของ Tanva Kanban](https://github.com/QUITFIL3/tanva-kanban/blob/main/docs/plugins.md)
+เมื่อคลังนี้มีรุ่นใหม่ หน้าต่างปลั๊กอินจะขึ้นปุ่ม **อัปเดต** ให้เอง · รายละเอียดเพิ่มเติมอยู่ใน [คู่มือปลั๊กอิน](docs/plugins.md)
 
 ### ปลั๊กอินที่ไม่ได้อยู่ในคลังนี้
 
 แท็บ **ติดตั้งเพิ่ม** มีช่อง **ติดตั้งจากลิงก์ GitHub** — วางลิงก์ repo (หรือโฟลเดอร์) ของปลั๊กอินที่มี `manifest.json` แล้วกดตรวจสอบ
-ระบบจะให้ดูรายละเอียดและคำเตือนก่อนติดตั้งเสมอ ([ดูเพิ่ม](https://github.com/QUITFIL3/tanva-kanban/blob/main/docs/plugins.md#ติดตั้งจากลิงก์-github))
+ระบบจะให้ดูรายละเอียดและคำเตือนก่อนติดตั้งเสมอ ([ดูเพิ่ม](docs/plugins.md#ติดตั้งจากลิงก์-github))
 
 เขียนปลั๊กอินแจกเองก็แค่วางไว้ใน repo สาธารณะของตัวเอง แล้วส่งลิงก์ให้คนอื่น — ไม่ต้องส่งเข้าคลังนี้ก็ได้
 ถ้าอยากให้คนเจอง่ายและผ่านการตรวจโค้ด ค่อยส่งเข้าคลังตามขั้นตอนด้านล่าง
@@ -37,7 +37,7 @@
 ## ส่งปลั๊กอินเข้าคลัง
 
 1. Fork repo นี้ แล้วสร้างโฟลเดอร์ `plugins/<id>/` — `id` ใช้ได้เฉพาะ `a-z 0-9 _ -` และต้องตรงกับ `id` ใน `manifest.json`
-   (วิธีเขียนปลั๊กอิน: [docs/plugins.md](https://github.com/QUITFIL3/tanva-kanban/blob/main/docs/plugins.md#เขียนปลั๊กอินเอง))
+   (วิธีเขียนปลั๊กอิน: [docs/plugins.md](docs/plugins.md#เขียนปลั๊กอินเอง))
 2. ประกาศทุกไฟล์ที่ต้องใช้ใน `manifest.json` (`entry` `styles` `files`) — ตอนติดตั้งระบบดาวน์โหลด **เฉพาะไฟล์ที่ประกาศไว้**
 3. เพิ่มปลั๊กอินใน `registry.json` (เวอร์ชันต้องตรงกับ `manifest.json`)
    ```json

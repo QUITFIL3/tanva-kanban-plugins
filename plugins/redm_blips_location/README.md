@@ -1,6 +1,6 @@
 # RedM Blips Location
 
-แท็บ **แผนที่ RedM / RDR2** สำหรับ [Tanva Kanban](https://github.com/QUITFIL3/tanva-kanban) — ปักหมุด (blip) จากพิกัดในการ์ดทุกใบของบอร์ด
+แท็บ **แผนที่ RedM / RDR2** สำหรับ **Tanva Kanban** — ปักหมุด (blip) จากพิกัดในการ์ดทุกใบของบอร์ด
 ใช้**รูป blip ของเกมได้ครบ 586 แบบ** (ชุดเดียวกับ [redlookup.com/blips](https://redlookup.com/blips)) ใส่ได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร
 กดดูแผนที่จากในการ์ดได้ทันที มี **คำแนะนำตอนพิมพ์ (IntelliSense)** ให้เขียน `!blip` ได้ไวไม่ต้องจำ และ**ผู้ช่วย AI** ใช้ได้ด้วย
 
