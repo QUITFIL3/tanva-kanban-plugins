@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { TOOLS, systemPrompt, toolsFor, makeExecutor, describeCall, checklist, extensionTools } from '../plugins/ai_assistant/tools.js';
 import { claudeParams, toClaudeTools, explainClaudeError } from '../plugins/ai_assistant/claude.js';
 import { toOpenAITools, explainOpenAIError, reasoningOf } from '../plugins/ai_assistant/openai.js';
-import { duration, latestThought } from '../plugins/ai_assistant/index.js';
+import { duration, latestThought, CARD_QUICK } from '../plugins/ai_assistant/index.js';
 import { PROVIDERS, resolveProvider } from '../plugins/ai_assistant/providers.js';
 import fs from 'node:fs';
 
@@ -186,6 +186,18 @@ test('ข้อความระบบมีโครงบอร์ด คน�
   assert.match(text, /Labels: bug, feature/);
   assert.match(text, /Editing is turned off/);
   assert.match(text, /Additional instructions from the board owner:\nตอบสั้น ๆ/);
+  assert.doesNotMatch(text, /chatting from inside card/, 'แผงของบอร์ด = ไม่ผูกกับการ์ดใบไหน');
+});
+
+test('แชทจากในการ์ด: AI รู้ว่า "การ์ดนี้" คือใบไหน · ปุ่มลัดส่งคำสั่งที่มีเลขการ์ด', () => {
+  const text = systemPrompt(fakeBoard(), { focusCard: { number: 7, title: 'แก้บั๊กม้าหาย' } });
+  assert.match(text, /chatting from inside card #7 \("แก้บั๊กม้าหาย"\)/);
+  assert.match(text, /"การ์ดนี้" and similar mean #7/);
+  assert.deepEqual(
+    CARD_QUICK.map((x) => x.key),
+    ['summary', 'checklist', 'tidy']
+  );
+  for (const x of CARD_QUICK) assert.match(x.prompt(7), /#7/, `${x.key} ต้องบอกเลขการ์ด`);
 });
 
 test('คำอธิบายการกระทำสำหรับแสดงในแชท', () => {

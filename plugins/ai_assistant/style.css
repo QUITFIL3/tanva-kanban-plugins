@@ -448,11 +448,110 @@ details.ai-think[open] > .ai-think-head::after {
   color: var(--fg-subtle);
 }
 
-/* ปุ่มลัดในหน้าการ์ด */
-.ai-quick {
+/* ---- ช่องผู้ช่วยในแถบข้างของการ์ด: แชทย่อส่วนสำหรับที่แคบ ---- */
+
+.ai-root.ai-in-card {
+  display: block;
+  background: none;
+}
+.ai-in-card .ai-log {
+  max-height: 360px;
+  padding: 0 0 2px;
+}
+.ai-in-card .ai-log:has(.ai-msg) {
+  padding-top: 4px;
+}
+.ai-card-quick {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-bottom: 8px;
+}
+.ai-in-card .ai-msg {
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ai-in-card .ai-avatar {
+  width: 22px;
+  height: 22px;
+}
+.ai-in-card .ai-avatar svg {
+  width: 11px;
+  height: 11px;
+}
+.ai-in-card .ai-bubble {
+  max-width: 92%;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 12px 12px 4px 12px;
+}
+.ai-in-card .ai-text {
+  padding-top: 1px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ai-in-card .ai-tool,
+.ai-in-card .ai-approval,
+.ai-in-card .ai-error,
+.ai-in-card .ai-note,
+.ai-in-card .ai-think,
+.ai-in-card .ai-meta {
+  margin-left: 0;
+}
+/* ไอคอนกับข้อความอยู่บรรทัดเดียวกันเสมอ ข้อความยาวตัดขึ้นบรรทัดใหม่ใต้ข้อความเอง */
+.ai-in-card .ai-tool {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  font-size: 12px;
+}
+.ai-in-card .ai-tool-detail {
+  grid-column: 2;
+  padding-left: 0;
+}
+.ai-in-card .ai-approval {
+  padding: 10px;
+  font-size: 12.5px;
+}
+.ai-in-card .ai-pre {
+  max-height: 120px;
+}
+.ai-in-card .ai-kv {
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+.ai-in-card .ai-approval-actions {
+  justify-content: stretch;
+}
+.ai-in-card .ai-approval-actions .btn {
+  flex: 1 1 auto;
+}
+.ai-in-card .ai-status {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.ai-in-card .ai-setup {
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.ai-in-card .ai-form {
+  gap: 6px;
+}
+.ai-in-card .ai-form textarea {
+  min-height: 32px;
+  max-height: 160px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.ai-in-card .ai-form .btn {
+  height: 32px;
+}
+.ai-card-foot {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--fg-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

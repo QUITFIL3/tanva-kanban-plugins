@@ -23,10 +23,20 @@ const SUGGESTIONS = [
   'สร้างการ์ดเช็กลิสต์งานประจำสัปดาห์นี้ให้หน่อย',
 ];
 
-const QUICK = {
-  summary: (n) => `สรุปการ์ด #${n} ให้หน่อย: เป้าหมาย สิ่งที่เสร็จแล้ว และสิ่งที่ยังค้าง`,
-  checklist: (n) => `ช่วยแตกงานในการ์ด #${n} เป็นเช็กลิสต์ขั้นตอนที่ทำได้จริง แล้วเพิ่มต่อท้ายรายละเอียดของการ์ดนั้น`,
-};
+/** ปุ่มลัดในช่องผู้ช่วยของการ์ด: ข้อความบนปุ่ม → คำสั่งที่ส่งจริง */
+export const CARD_QUICK = [
+  { key: 'summary', label: 'สรุปการ์ดนี้', prompt: (n) => `สรุปการ์ด #${n} ให้หน่อย: เป้าหมาย สิ่งที่เสร็จแล้ว และสิ่งที่ยังค้าง` },
+  {
+    key: 'checklist',
+    label: 'แตกเป็นเช็กลิสต์',
+    prompt: (n) => `ช่วยแตกงานในการ์ด #${n} เป็นเช็กลิสต์ขั้นตอนที่ทำได้จริง แล้วเพิ่มต่อท้ายรายละเอียดของการ์ดนั้น`,
+  },
+  {
+    key: 'tidy',
+    label: 'เรียบเรียงรายละเอียด',
+    prompt: (n) => `ช่วยเรียบเรียงรายละเอียดของการ์ด #${n} ให้อ่านง่ายขึ้น โดยไม่ตัดข้อมูลเดิมออก แล้วบันทึกลงการ์ด`,
+  },
+];
 
 /** เวลาที่ผ่านไปแบบนาฬิกา 0:07 / 1:05 */
 const clock = (ms) => {
@@ -49,9 +59,8 @@ export const latestThought = (text, max = 90) => {
   return last.length > max ? `${last.slice(0, max - 1)}…` : last;
 };
 
-/** บทสนทนาแยกตามบอร์ด — อยู่จนกว่าจะรีเฟรชหน้าหรือกด "เริ่มใหม่" */
+/** บทสนทนาแยกตามบอร์ด (แผงด้านขวา) และตามการ์ด (ช่องผู้ช่วยในการ์ด) — อยู่จนกว่าจะรีเฟรชหน้าหรือกด "เริ่มใหม่" */
 const conversations = new Map();
-let pendingPrompt = null; // คำสั่งจากปุ่มในหน้าการ์ด รอส่งเมื่อเปิดแผง
 
 /** ผู้ให้บริการ/โมเดลที่บอร์ดนี้เลือก และพร้อมใช้หรือยัง (แอดมินตั้งคีย์แล้วหรือยัง) */
 function readiness(host) {
@@ -61,10 +70,16 @@ function readiness(host) {
 }
 
 function freshConversation(provider, model) {
-  return { provider, model, session: { messages: [] }, log: [], seq: 0 };
+  return { provider, model, session: { messages: [] }, log: [], seq: 0, draft: '', focus: null };
 }
 
-function createChatView(host) {
+/**
+ * หน้าแชทหนึ่งชุด — cardId ว่าง = แผงด้านขวาของบอร์ด · มี cardId = ช่องผู้ช่วยในแถบข้างของการ์ดใบนั้น
+ * ช่องในการ์ดถูกวาดใหม่ทุกครั้งที่การ์ดเปลี่ยน (รวมถึงตอน AI แก้การ์ดเอง) จึงเรียก mount ซ้ำกับกล่องใหม่ได้
+ * โดยงานที่กำลังทำ ข้อความที่พิมพ์ค้าง และเคอร์เซอร์ยังอยู่
+ */
+function createChatView(host, { cardId = null } = {}) {
+  const inCard = Boolean(cardId);
   let root = null;
   let busy = false;
   let controller = null;
@@ -77,18 +92,21 @@ function createChatView(host) {
   const waiting = new Map(); // id ของกล่องขออนุญาต -> resolve
 
   const q = (sel) => root?.querySelector(sel);
+  const key = () => (inCard ? `card:${cardId}` : host.board().id);
+  const focusCard = () => (inCard ? host.card(cardId) : null);
 
   function conversation() {
-    const id = host.board().id;
+    const id = key();
     const r = readiness(host);
     let c = conversations.get(id);
     if (!c) {
       c = freshConversation(r.provider, r.model);
       conversations.set(id, c);
     } else if ((c.provider !== r.provider || c.model !== r.model) && !busy) {
-      // เปลี่ยนผู้ให้บริการ/โมเดล — รูปแบบประวัติต่างกัน เริ่มคุยใหม่
+      // เปลี่ยนผู้ให้บริการ/โมเดล — รูปแบบประวัติต่างกัน เริ่มคุยใหม่ (ข้อความที่พิมพ์ค้างยังอยู่)
       const had = c.log.length;
-      c = freshConversation(r.provider, r.model);
+      const { draft, focus } = c;
+      c = { ...freshConversation(r.provider, r.model), draft, focus };
       if (had) c.log.push({ id: ++c.seq, type: 'note', text: `เปลี่ยนเป็น ${r.label} แล้ว — เริ่มบทสนทนาใหม่` });
       conversations.set(id, c);
     }
@@ -169,6 +187,14 @@ function createChatView(host) {
     if (!log) return;
     const c = conversation();
     const near = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    const clear = q('[data-ai-clear]');
+    if (clear && inCard) clear.hidden = !c.log.length;
+    if (!c.log.length && inCard) {
+      log.innerHTML = `<div class="ai-card-quick">${CARD_QUICK.map(
+        (x) => `<button type="button" class="btn btn-sm" data-ai-quick="${x.key}">${host.esc(x.label)}</button>`
+      ).join('')}</div>`;
+      return;
+    }
     if (!c.log.length) {
       log.innerHTML = `
         <div class="ai-empty">
@@ -359,7 +385,7 @@ function createChatView(host) {
     const ctx = {
       model: r.model,
       effort,
-      system: systemPrompt(host.board(), { allowEdits, instructions, guides: ext.guides }),
+      system: systemPrompt(host.board(), { allowEdits, instructions, guides: ext.guides, focusCard: focusCard() }),
       tools: toolsFor({ allowEdits, extra: ext.tools }),
       // Claude: SDK ต่อ /v1/messages เอง · เจ้าอื่น: SDK ของ OpenAI ต่อ /chat/completions ต่อจาก basePath
       proxyUrl: host.proxyUrl(r.proxy),
@@ -442,7 +468,9 @@ function createChatView(host) {
       renderLog();
       renderChrome();
       paintStatus();
-      if (root) q('[data-ai-input]').focus();
+      // กลับไปที่ช่องพิมพ์ — เว้นแต่ระหว่างรอผู้ใช้ไปทำอย่างอื่นแล้ว (เช่นกำลังแก้รายละเอียดการ์ด)
+      const active = document.activeElement;
+      if (root?.isConnected && (!active || active === document.body || root.contains(active))) q('[data-ai-input]').focus();
     }
   }
 
@@ -451,12 +479,31 @@ function createChatView(host) {
     input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
   }
 
+  const formHtml = (placeholder, small = '') => `
+    <form class="ai-form" data-ai-form>
+      <textarea class="input" data-ai-input rows="1" maxlength="4000" title="Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่"
+        placeholder="${placeholder}"></textarea>
+      <button type="submit" class="btn btn-primary${small}" data-ai-send>ส่ง</button>
+      <button type="button" class="btn${small}" data-ai-stop hidden>หยุด</button>
+    </form>`;
+
   return {
     mount(el) {
       // วาดลงกล่องของตัวเองข้างใน ไม่แตะ class ของกล่องที่หน้าเว็บส่งมา (ปลั๊กอินอื่นใช้กล่องเดียวกัน)
-      el.innerHTML = '<div class="ai-root"></div>';
+      el.innerHTML = `<div class="ai-root${inCard ? ' ai-in-card' : ''}"></div>`;
       root = el.firstElementChild;
-      root.innerHTML = `
+      root.innerHTML = inCard
+        ? `
+          <div class="sidebar-title">
+            <span>${svg(SPARKLE)} ผู้ช่วย AI</span>
+            <button type="button" class="btn btn-invisible btn-sm" data-ai-clear title="ล้างบทสนทนาของการ์ดนี้แล้วเริ่มใหม่" hidden>เริ่มใหม่</button>
+          </div>
+          <div class="ai-log" data-ai-log></div>
+          <div class="ai-status" data-ai-status role="status" aria-live="polite" hidden></div>
+          <div class="ai-setup" data-ai-setup hidden></div>
+          ${formHtml('สั่ง AI เรื่องการ์ดนี้…', ' btn-sm')}
+          <div class="ai-card-foot" data-ai-model></div>`
+        : `
         <div class="ai-wrap">
           <header class="ai-head">
             <span class="ai-model" data-ai-model></span>
@@ -465,20 +512,32 @@ function createChatView(host) {
           <div class="ai-log" data-ai-log></div>
           <div class="ai-status" data-ai-status role="status" aria-live="polite" hidden></div>
           <div class="ai-setup" data-ai-setup hidden></div>
-          <form class="ai-form" data-ai-form>
-            <textarea class="input" data-ai-input rows="1" maxlength="4000" title="Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่"
-              placeholder="สั่งงานได้เลย เช่น “ย้ายการ์ดที่เสร็จแล้วไป Done”"></textarea>
-            <button type="submit" class="btn btn-primary" data-ai-send>ส่ง</button>
-            <button type="button" class="btn" data-ai-stop hidden>หยุด</button>
-          </form>
+          ${formHtml('สั่งงานได้เลย เช่น “ย้ายการ์ดที่เสร็จแล้วไป Done”')}
           <p class="ai-foot">AI อาจผิดพลาดได้ · ทุกการแก้บอร์ดบันทึกในประวัติด้วยชื่อคุณ</p>
         </div>`;
 
       const input = q('[data-ai-input]');
+      // ข้อความที่พิมพ์ค้าง + เคอร์เซอร์ อยู่ในบทสนทนา — การ์ดถูกวาดใหม่กลางคันก็ไม่หาย
+      const saved = conversation();
+      input.value = saved.draft || '';
+      autosize(input);
+      const remember = () => {
+        const c = conversation();
+        c.draft = input.value;
+        c.focus = document.activeElement === input ? [input.selectionStart, input.selectionEnd] : c.focus;
+      };
+      input.addEventListener('focus', remember);
+      input.addEventListener('select', remember);
+      input.addEventListener('keyup', remember);
+      input.addEventListener('click', remember);
+      input.addEventListener('blur', () => {
+        if (input.isConnected) conversation().focus = null; // กล่องถูกวาดใหม่ ≠ ผู้ใช้ย้ายไปที่อื่น
+      });
       q('[data-ai-form]').addEventListener('submit', (e) => {
         e.preventDefault();
         const text = input.value;
         input.value = '';
+        conversation().draft = '';
         autosize(input);
         send(text);
       });
@@ -488,7 +547,10 @@ function createChatView(host) {
           q('[data-ai-form]').requestSubmit();
         }
       });
-      input.addEventListener('input', () => autosize(input));
+      input.addEventListener('input', () => {
+        autosize(input);
+        remember();
+      });
       // จำว่าก้อนความคิดไหนกางไว้ วาดใหม่แล้วจะได้ไม่หุบเอง
       root.addEventListener(
         'toggle',
@@ -504,13 +566,19 @@ function createChatView(host) {
       q('[data-ai-stop]').addEventListener('click', () => controller?.abort());
       q('[data-ai-clear]').addEventListener('click', () => {
         const r = readiness(host);
-        conversations.set(host.board().id, freshConversation(r.provider, r.model));
+        conversations.set(key(), freshConversation(r.provider, r.model));
         renderLog();
         input.focus();
       });
       root.addEventListener('click', (e) => {
         const suggest = e.target.closest('[data-ai-suggest]');
         if (suggest) return send(suggest.textContent);
+        const quick = e.target.closest('[data-ai-quick]');
+        if (quick) {
+          const card = focusCard();
+          const item = CARD_QUICK.find((x) => x.key === quick.dataset.aiQuick);
+          return card && item ? send(item.prompt(card.number)) : undefined;
+        }
         if (e.target.closest('[data-ai-open-settings]')) return host.openSettings();
         for (const [attr, decision] of [
           ['data-ai-allow', 'ok'],
@@ -529,10 +597,14 @@ function createChatView(host) {
 
       renderLog();
       renderChrome();
-      if (pendingPrompt) {
-        const text = pendingPrompt;
-        pendingPrompt = null;
-        send(text);
+      paintStatus();
+      if (inCard) {
+        // การ์ดถูกวาดใหม่ระหว่างที่พิมพ์อยู่ — คืนเคอร์เซอร์ให้ที่เดิม (เปิดการ์ดเฉย ๆ ไม่แย่งโฟกัส)
+        const at = saved.focus;
+        if (at) {
+          input.focus();
+          input.setSelectionRange(at[0], at[1]);
+        }
       } else if (matchMedia('(hover: hover)').matches) input.focus();
     },
 
@@ -541,11 +613,6 @@ function createChatView(host) {
       if (!busy) conversation(); // เปลี่ยนโมเดลในหน้าตั้งค่า = เริ่มใหม่
       renderLog();
       renderChrome();
-      if (pendingPrompt && !busy) {
-        const text = pendingPrompt;
-        pendingPrompt = null;
-        send(text);
-      }
     },
 
     unmount() {
@@ -558,26 +625,16 @@ function createChatView(host) {
 }
 
 export default function setup(host) {
+  const cardChats = new Map(); // การ์ด → หน้าแชทของการ์ดนั้น (ใช้ตัวเดิมทุกครั้งที่การ์ดถูกวาดใหม่)
   return {
     // แผงด้านขวาของจอ — เปิด/ปิดจากปุ่มรูปดาวบนหัวเว็บ ใช้คู่กับบอร์ด/แผนที่/ประวัติได้
     panels: { assistant: createChatView(host) },
 
-    /** ปุ่มลัดในหน้าการ์ด: ส่งคำสั่งเกี่ยวกับการ์ดใบนี้ไปที่แท็บผู้ช่วย */
+    /** ช่องผู้ช่วยในแถบข้างของการ์ด: สั่งงานเกี่ยวกับการ์ดใบนี้ได้ทันทีโดยไม่ต้องออกจากการ์ด */
     cardPanel(section, card) {
-      section.innerHTML = `
-        <div class="sidebar-title"><span>${svg(SPARKLE)} ผู้ช่วย AI</span></div>
-        <div class="ai-quick">
-          <button type="button" class="btn btn-sm" data-ai-quick="summary">สรุปการ์ดนี้</button>
-          <button type="button" class="btn btn-sm" data-ai-quick="checklist">แตกเป็นเช็กลิสต์</button>
-        </div>`;
-      section.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-ai-quick]');
-        if (!btn) return;
-        pendingPrompt = QUICK[btn.dataset.aiQuick](card.number);
-        host.closeCard();
-        host.openPanel('assistant'); // เปิดแล้วส่งคำสั่งให้เอง (ถ้าเปิดอยู่แล้ว update() จะหยิบไปส่ง)
-        host.refresh?.();
-      });
+      let chat = cardChats.get(card.id);
+      if (!chat) cardChats.set(card.id, (chat = createChatView(host, { cardId: card.id })));
+      chat.mount(section);
     },
   };
 }

@@ -241,7 +241,7 @@ export function extensionTools(exports = []) {
 }
 
 /** ข้อความระบบ: บทบาท + โครงบอร์ด (ไม่ใส่การ์ดทั้งหมด — ให้เรียก list_cards เอา) */
-export function systemPrompt(board, { allowEdits = true, instructions = '', now = new Date(), guides = [] } = {}) {
+export function systemPrompt(board, { allowEdits = true, instructions = '', now = new Date(), guides = [], focusCard = null } = {}) {
   const cards = board.cards.filter((c) => !c.archived);
   const columns = [...board.columns]
     .sort((a, b) => a.order - b.order)
@@ -273,6 +273,15 @@ export function systemPrompt(board, { allowEdits = true, instructions = '', now 
   if (!allowEdits) {
     lines.push(
       '- Editing is turned off for this board: you can read cards but cannot change anything. If asked to change something, say so.'
+    );
+  }
+  if (focusCard) {
+    // แชทจากช่องผู้ช่วยในการ์ด — "การ์ดนี้" หมายถึงการ์ดใบที่เปิดอยู่
+    lines.push(
+      '',
+      `The user is chatting from inside card #${focusCard.number} ("${String(focusCard.title || '').slice(0, 200)}").`,
+      `Unless they name another card, "this card", "การ์ดนี้" and similar mean #${focusCard.number}.`,
+      'Read it with get_card before answering about it or changing it, and keep answers short — they are shown in a narrow sidebar.'
     );
   }
   if (guides.length) {
