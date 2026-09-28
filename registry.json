@@ -5,8 +5,8 @@
     {
       "id": "redm_blips_location",
       "name": "RedM Blips Location",
-      "description": "แท็บแผนที่ RedM/RDR2 — ปักหมุดจากพิกัดในการ์ด ใส่ได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร ดูตัวอย่างแผนที่ในหน้าการ์ด และมีคำแนะนำตอนพิมพ์ !blip (IntelliSense)",
-      "version": "1.2.0",
+      "description": "แท็บแผนที่ RedM/RDR2 — ปักหมุดจากพิกัดในการ์ด ใช้รูป blip ของเกมได้ครบ 586 แบบ (ชุดเดียวกับ redlookup.com) ใส่ได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร กดดูแผนที่จากการ์ดได้ทันที มีคำแนะนำตอนพิมพ์ !blip และให้ผู้ช่วย AI ใช้ได้",
+      "version": "1.3.0",
       "author": "QUITFIL3",
       "tags": [
         "redm",
@@ -20,8 +20,8 @@
     {
       "id": "ai_assistant",
       "name": "AI Assistant",
-      "description": "ผู้ช่วย AI แผงด้านขวาของจอ สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) ใช้ได้หลายเจ้า: Claude, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Mistral, xAI",
-      "version": "1.1.0",
+      "description": "ผู้ช่วย AI แผงด้านขวาของจอ สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) บอกสถานะว่ากำลังคิดอะไร ใช้เวลาไปเท่าไร และใช้ความสามารถของปลั๊กอินอื่นในบอร์ดได้ (เช่นแผนที่ RedM) · ใช้ได้หลายเจ้า: Claude, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Mistral, xAI",
+      "version": "1.2.0",
       "author": "QUITFIL3",
       "tags": [
         "ai",

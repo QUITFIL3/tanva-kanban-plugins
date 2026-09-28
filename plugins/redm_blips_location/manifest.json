@@ -1,13 +1,13 @@
 {
   "id": "redm_blips_location",
   "name": "RedM Blips Location",
-  "description": "เพิ่มแท็บแผนที่ RedM/RDR2 — ปักหมุด (blip) จากพิกัด vec2/vec3/vec4 ในการ์ด ใส่รายละเอียดได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร ดูตัวอย่างแผนที่ในหน้าการ์ด และมีคำแนะนำตอนพิมพ์ !blip (IntelliSense)",
-  "version": "1.2.0",
+  "description": "เพิ่มแท็บแผนที่ RedM/RDR2 — ปักหมุด (blip) จากพิกัด vec2/vec3/vec4 ในการ์ด ใช้รูป blip ของเกมได้ครบ 586 แบบ (ชุดเดียวกับ redlookup.com) ใส่รายละเอียดได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร กดดูแผนที่จากการ์ดได้ทันที มีคำแนะนำตอนพิมพ์ !blip และให้ผู้ช่วย AI ใช้ได้",
+  "version": "1.3.0",
   "author": "QUITFIL3",
   "homepage": "https://github.com/QUITFIL3/tanva-kanban-plugins/tree/main/plugins/redm_blips_location",
   "entry": "index.js",
   "styles": ["style.css"],
-  "files": ["blips.js", "complete.js"],
+  "files": ["blips.js", "blip-names.js", "complete.js", "ai.js"],
   "views": [
     {
       "id": "map",

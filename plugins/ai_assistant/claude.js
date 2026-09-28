@@ -32,7 +32,8 @@ export function claudeParams({ model, system, messages, tools, effort }) {
     cache_control: { type: 'ephemeral' }, // วนเรียกเครื่องมือหลายรอบ = ส่วนต้นซ้ำเดิม อ่านจาก cache ถูกกว่า
   };
   if (ADAPTIVE.test(model)) {
-    params.thinking = { type: 'adaptive' };
+    // display: 'summarized' = ส่งสรุปความคิดมาด้วย (ค่าเริ่มต้นของรุ่นใหม่คือไม่ส่ง) ไว้โชว์ว่า AI กำลังคิดอะไรอยู่
+    params.thinking = { type: 'adaptive', display: 'summarized' };
     if (effort && effort !== 'default') params.output_config = { effort };
   }
   if (WITH_FALLBACK.has(model)) {
@@ -62,7 +63,8 @@ export function explainClaudeError(err, Anthropic) {
 
 /**
  * คุยหนึ่งรอบ (อาจเรียกเครื่องมือหลายครั้ง) — session.messages เก็บประวัติรูปแบบของ Claude
- * ctx: { model, effort, system, tools, proxyUrl, signal, onText(delta), onStep(), runTool(name, input, id) }
+ * ctx: { model, effort, system, tools, proxyUrl, signal, runTool(name, input, id),
+ *        onRequest(), onThinkingStart(), onThinking(delta), onText(delta), onToolStart(name), onStep() }
  */
 export async function runClaudeTurn(session, userText, ctx) {
   const { default: Anthropic } = await loadSdk();
@@ -79,10 +81,21 @@ export async function runClaudeTurn(session, userText, ctx) {
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (step) ctx.onStep?.();
+      ctx.onRequest?.();
       const params = claudeParams({ ...ctx, messages: session.messages });
       const api = params.betas ? client.beta.messages : client.messages;
       const stream = api.stream(params, { signal: ctx.signal });
-      stream.on('text', (delta) => ctx.onText(delta));
+      // ไล่อ่านเหตุการณ์ของสตรีม: ความคิด (สรุป) · ข้อความตอบ · เริ่มเรียกเครื่องมือ
+      for await (const event of stream) {
+        if (event.type === 'content_block_start') {
+          const type = event.content_block?.type;
+          if (type === 'thinking' || type === 'redacted_thinking') ctx.onThinkingStart?.();
+          else if (type === 'tool_use') ctx.onToolStart?.(event.content_block.name);
+        } else if (event.type === 'content_block_delta') {
+          if (event.delta?.type === 'text_delta') ctx.onText(event.delta.text);
+          else if (event.delta?.type === 'thinking_delta') ctx.onThinking?.(event.delta.thinking);
+        }
+      }
       const message = await stream.finalMessage();
 
       if (message.stop_reason === 'refusal') {

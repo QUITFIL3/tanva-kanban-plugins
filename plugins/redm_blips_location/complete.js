@@ -8,7 +8,90 @@
  *
  * ไม่แตะหน้าเว็บเลย — คืนแค่รายการให้ช่องเขียนของ Tanva Kanban วาดเอง (เทสต์ใน Node ได้)
  */
-import { blipContext, parseBlips, formatVec, FIELD_ALIASES, ICON_ALIASES, NAMED_COLORS, ICON_KEYS } from './blips.js';
+import {
+  blipContext,
+  parseBlips,
+  formatVec,
+  FIELD_ALIASES,
+  ICON_ALIASES,
+  NAMED_COLORS,
+  ICON_KEYS,
+  SHORT_SPRITES,
+  blipImage,
+  joaat,
+} from './blips.js';
+import { BLIP_NAMES } from './blip-names.js';
+
+/** คำไทยของส่วนในชื่อรูป blip ไว้ค้นเป็นภาษาไทย เช่น พิมพ์ "ปืน" เจอ blip_shop_gunsmith */
+const BLIP_WORDS_TH = {
+  shop: 'ร้าน',
+  store: 'ร้านค้า',
+  gunsmith: 'ร้านปืน ปืน',
+  doctor: 'หมอ ร้านยา',
+  barber: 'ร้านตัดผม',
+  butcher: 'ร้านเนื้อ',
+  tailor: 'ร้านเสื้อผ้า',
+  wardrobe: 'ตู้เสื้อผ้า',
+  horse: 'ม้า',
+  saddle: 'อานม้า',
+  train: 'รถไฟ',
+  coach: 'รถม้า',
+  fishing: 'ตกปลา',
+  fish: 'ปลา',
+  hunting: 'ล่าสัตว์',
+  animal: 'สัตว์',
+  trapper: 'ขนสัตว์',
+  camp: 'แคมป์',
+  campfire: 'กองไฟ',
+  tent: 'เต็นท์',
+  home: 'บ้าน',
+  hotel: 'โรงแรม',
+  bath: 'อาบน้ำ',
+  saloon: 'ร้านเหล้า บาร์',
+  bank: 'ธนาคาร',
+  post: 'ไปรษณีย์',
+  sheriff: 'นายอำเภอ ตำรวจ',
+  bounty: 'ค่าหัว',
+  gang: 'แก๊ง',
+  mission: 'ภารกิจ',
+  objective: 'เป้าหมาย ภารกิจ',
+  poi: 'จุด',
+  npc: 'คน',
+  ped: 'คน',
+  player: 'ผู้เล่น',
+  treasure: 'สมบัติ',
+  herb: 'สมุนไพร',
+  plant: 'พืช',
+  church: 'โบสถ์',
+  town: 'เมือง',
+  fence: 'รับซื้อของโจร',
+  moonshine: 'เหล้าเถื่อน',
+  market: 'ตลาด',
+  attention: 'ระวัง อันตราย',
+  newspaper: 'หนังสือพิมพ์ ข้อมูล',
+  blacksmith: 'ช่างตีเหล็ก',
+  robbery: 'ปล้น',
+  location: 'ตำแหน่ง',
+};
+
+const thaiWords = (name) =>
+  name
+    .split('_')
+    .map((w) => BLIP_WORDS_TH[w] || '')
+    .filter(Boolean)
+    .join(' ');
+
+const hex = (h) => `0x${(h >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
+
+/**
+ * เรียงรูป blip ตามที่คนทำเซิร์ฟเวอร์ใช้บ่อย: ร้านค้า → จุดบริการ/สถานที่ทั่วไป → ambient → ภารกิจ/ออนไลน์/ตัวชี้ทิศ
+ * (พิมพ์ "gun" แล้ว blip_shop_gunsmith จะมาก่อนรูปภารกิจ gunslinger)
+ */
+const blipRank = (n) =>
+  n.startsWith('blip_shop_') ? 0 : /^blip_(mp|mission|rc|region|overlay|radar|direction|code)_/.test(n) ? 3 : n.startsWith('blip_ambient_') ? 2 : 1;
+const BLIPS_BY_USE = BLIP_NAMES.map((n, i) => [n, i])
+  .sort((a, b) => blipRank(a[0]) - blipRank(b[0]) || a[1] - b[1])
+  .map(([n]) => n);
 
 const AUDIO_EXT = /\.(wav|mp3|ogg|m4a|aac|flac)$/i;
 
@@ -22,7 +105,14 @@ export const FIELDS = [
     doc: 'พิกัดในเกม `vec2(x, y)` `vec3(x, y, z)` หรือ `vec4(x, y, z, h)` — ช่องเดียวที่ต้องมี\n\nหาได้จากในเกม หรือคลิกบนแท็บ **แผนที่** แล้วกด **คัดลอก**',
   },
   { key: 'name', title: 'ชื่อบนแผนที่', example: 'ร้านปืน Valentine', doc: 'ชื่อที่ขึ้นบนหมุดและในรายการของแผนที่ · ไม่ใส่ = ใช้ชื่อการ์ด' },
-  { key: 'icon', title: 'ไอคอน', example: 'shop', doc: 'รูปบนหมุด: `shop` `npc` `house` `camp` `quest` `danger` `info` `pin`' },
+  {
+    key: 'icon',
+    title: 'รูป blip',
+    example: 'blip_shop_gunsmith',
+    doc:
+      'รูปบนหมุด — ชื่อรูป blip ของเกม (ชุดเดียวกับ redlookup.com/blips เช่น `blip_shop_gunsmith`) หรือ hash ของมัน · ' +
+      'หรือแบบสั้น `shop` `npc` `house` `camp` `quest` `danger` `info` `pin`',
+  },
   { key: 'color', title: 'สีหมุด', example: 'orange', doc: '`#hex` หรือชื่อสีภาษาอังกฤษ · ไม่ใส่ = สีของคอลัมน์ที่การ์ดอยู่' },
   { key: 'radius', title: 'รัศมี', example: '25', doc: 'วาดวงรอบจุด หน่วยเดียวกับพิกัดในเกม' },
   { key: 'role', title: 'หน้าที่', example: 'ขายและซ่อมอาวุธ', doc: 'จุดนี้มีไว้ทำอะไร' },
@@ -161,6 +251,17 @@ function nameFor(key, typed) {
 const audioOf = (card) =>
   (card?.attachments || []).filter((a) => /^audio\//.test(a.mime || '') || AUDIO_EXT.test(a.name || ''));
 
+/** เมนูคลิกขวาในช่องเขียน: แทรก !blip จากแม่แบบ (ต่อกับ setup(host) → { editorMenu }) */
+export function blipEditorMenu(ctx, { iconPaths = {} } = {}) {
+  return [
+    {
+      label: 'แทรก !blip',
+      icon: iconPaths.pin || '',
+      items: templates(audioOf(ctx?.card)[0]?.name).map((t) => ({ label: t.label, insert: t.insert, block: true })),
+    },
+  ];
+}
+
 /**
  * ตัวให้คำแนะนำของปลั๊กอิน — ต่อกับ setup(host) → { completions }
  * iconPaths / iconLabels = ไอคอนและชื่อของแต่ละแบบหมุด (มาจาก index.js)
@@ -265,16 +366,24 @@ export function createBlipCompletions(host, { iconPaths = {}, iconLabels = {} } 
         return out([...vec, ...others]);
       }
       case 'icon':
-        return out(
-          ICON_KEYS.map((key) => ({
+        // แบบสั้นที่ใช้บ่อยก่อน แล้วตามด้วยรูป blip ของเกมทั้งหมด (พิมพ์ชื่อ/คำไทยเพื่อกรอง)
+        return out([
+          ...ICON_KEYS.map((key) => ({
             label: key,
             detail: iconLabels[key] || '',
-            icon: iconPaths[key] || '',
-            filter: [key, ...(ICON_ALIASES[key] || [])].join(' '),
-            doc: `ไอคอน **${iconLabels[key] || key}** บนหมุด\n\nพิมพ์แบบนี้ก็ได้: ${(ICON_ALIASES[key] || []).map(code).join(' ')}`,
+            image: blipImage(SHORT_SPRITES[key]),
+            filter: [key, ...(ICON_ALIASES[key] || []), SHORT_SPRITES[key]].join(' '),
+            doc: `ไอคอน **${iconLabels[key] || key}** — ใช้รูป ${code(SHORT_SPRITES[key])} ของเกม\n\nพิมพ์แบบนี้ก็ได้: ${(ICON_ALIASES[key] || []).map(code).join(' ')}`,
             insert: key,
-          }))
-        );
+          })),
+          ...BLIPS_BY_USE.map((name) => ({
+            label: name,
+            image: blipImage(name),
+            filter: `${name} ${name.replace(/^blip_/, '').replace(/_/g, ' ')} ${thaiWords(name)}`,
+            doc: `รูป blip ของเกม ${code(name)}\n\nhash ${code(joaat(name))} · ${code(hex(joaat(name)))} — ใช้ในสคริปต์ RedM ได้ตรง ๆ`,
+            insert: name,
+          })),
+        ]);
       case 'color':
         return out([
           ...Object.entries(NAMED_COLORS)

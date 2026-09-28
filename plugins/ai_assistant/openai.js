@@ -31,9 +31,14 @@ export function explainOpenAIError(err, OpenAI, label = 'OpenAI') {
   return { message: err?.message || String(err) };
 }
 
+/** ความคิดที่บางเจ้าส่งมากับคำตอบ: DeepSeek = reasoning_content · OpenRouter = reasoning (ไม่เก็บลงประวัติ) */
+export const reasoningOf = (msg) =>
+  [msg?.reasoning_content, msg?.reasoning].find((r) => typeof r === 'string' && r.trim()) || '';
+
 /**
  * คุยหนึ่งรอบ — session.messages เก็บประวัติรูปแบบ OpenAI (ไม่รวม system ซึ่งสร้างใหม่ทุกครั้งจากสถานะบอร์ด)
- * ctx: { model, system, tools, baseURL, label, headers, signal, onText(delta), onStep(), runTool(name, input, id) }
+ * ctx: { model, system, tools, baseURL, label, headers, signal, runTool(name, input, id),
+ *        onRequest(), onThinking(text), onText(delta), onStep() }
  */
 export async function runOpenAITurn(session, userText, ctx) {
   const { default: OpenAI } = await loadSdk();
@@ -51,6 +56,7 @@ export async function runOpenAITurn(session, userText, ctx) {
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (step) ctx.onStep?.();
+      ctx.onRequest?.();
       const completion = await client.chat.completions.create(
         {
           model: ctx.model,
@@ -62,6 +68,8 @@ export async function runOpenAITurn(session, userText, ctx) {
       const choice = completion.choices?.[0];
       const msg = choice?.message;
       if (!msg) throw new Error(`ไม่ได้รับคำตอบจาก ${ctx.label || 'ผู้ให้บริการ'}`);
+      const reasoning = reasoningOf(msg);
+      if (reasoning) ctx.onThinking?.(reasoning);
       if (msg.refusal) {
         ctx.onText(msg.refusal);
         session.messages.push({ role: 'assistant', content: msg.refusal });

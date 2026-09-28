@@ -228,22 +228,48 @@
   background: none;
   border: 0;
 }
+/* หมุด: วงกลมเข้ม ขอบสีตามคอลัมน์/สีของ blip และรูป blip ของเกม (รูปขาว) ตรงกลาง */
 .rb-pin {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  color: #0a0a0a;
-  background: var(--pin, #d4d4d4);
-  border: 2px solid #fafafa;
+  color: #fafafa;
+  background: #161616;
+  border: 2px solid var(--pin, #d4d4d4);
   border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.35);
   transition: transform 0.12s ease;
 }
 .rb-pin svg {
   fill: currentColor;
-  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
+}
+.rb-sprite {
+  display: block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: center / contain no-repeat;
+}
+.rb-pin.small .rb-sprite {
+  width: 13px;
+  height: 13px;
+}
+.rb-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: #161616;
+  border: 1.5px solid var(--pin, #d4d4d4);
+  border-radius: 50%;
+}
+.rb-chip .rb-sprite {
+  width: 13px;
+  height: 13px;
 }
 .rb-pin.rb-auto {
   border-style: dashed;
@@ -681,4 +707,81 @@
 .markdown .rb-fields .rb-chips li {
   margin: 0;
   list-style: none;
+}
+
+/* ---- แผนที่แบบหน้าต่างลอย (กดจากการ์ด) — อยู่เหนือหน้าต่างการ์ด แต่ใต้กล่องฟอร์ม/ข้อความแจ้งเตือน ---- */
+
+.rb-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--backdrop, rgba(0, 0, 0, 0.5));
+  animation: rb-fade 0.12s ease-out;
+}
+.rb-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  height: min(860px, 100%);
+  overflow: hidden;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+}
+.rb-modal-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.rb-modal-title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+}
+.rb-modal-title svg {
+  flex: none;
+  fill: currentColor;
+}
+.rb-modal-sub {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 400;
+  color: var(--fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-modal-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+@keyframes rb-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (max-width: 768px) {
+  .rb-modal-layer {
+    padding: 0;
+  }
+  .rb-modal {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .rb-modal-head [data-rb-modal-tab] {
+    display: none;
+  }
 }

@@ -234,6 +234,120 @@
   color: var(--success);
 }
 
+/* ก้อนความคิด: ระหว่างคิดโชว์เวลา + ประโยคล่าสุด · คิดเสร็จกดกางดูสรุปความคิดได้ */
+.ai-think {
+  margin: -2px 0 10px 38px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.ai-think-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  list-style: none;
+}
+details.ai-think > .ai-think-head {
+  cursor: pointer;
+}
+.ai-think-head::-webkit-details-marker {
+  display: none;
+}
+details.ai-think > .ai-think-head::after {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+details.ai-think[open] > .ai-think-head::after {
+  transform: rotate(45deg);
+}
+.ai-think-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-subtle);
+}
+.ai-think-title {
+  flex: none;
+  font-weight: 500;
+}
+.ai-think.live .ai-think-title {
+  color: var(--fg);
+}
+.ai-think-title [data-ai-think-time] {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--fg-subtle);
+}
+.ai-think-peek {
+  min-width: 0;
+  overflow: hidden;
+  font-style: italic;
+  color: var(--fg-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-think[open] .ai-think-peek {
+  display: none;
+}
+.ai-think-body {
+  max-height: 260px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  border-left: 2px solid var(--border);
+}
+.ai-think-body > :first-child {
+  margin-top: 0;
+}
+.ai-think-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* สรุปท้ายคำตอบ: ใช้เวลาไปเท่าไร */
+.ai-meta {
+  margin: -6px 0 14px 38px;
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+}
+
+/* แถบสถานะเหนือช่องพิมพ์: กำลังทำอะไร + เวลาที่ใช้ไป */
+.ai-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius);
+}
+.ai-status-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-status-time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+}
+
 .ai-error,
 .ai-note {
   margin: 0 0 14px 38px;
@@ -351,7 +465,9 @@
   .ai-tool,
   .ai-approval,
   .ai-error,
-  .ai-note {
+  .ai-note,
+  .ai-think,
+  .ai-meta {
     margin-left: 0;
   }
   .ai-kv {

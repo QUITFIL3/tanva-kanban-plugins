@@ -204,8 +204,44 @@ function cardSummary(board, card) {
   return out;
 }
 
+/* ---------------- เครื่องมือจากปลั๊กอินอื่น ---------------- */
+
+const EXT_TOOL_NAME = /^[a-z0-9_]{1,40}$/;
+const GUIDE_LIMIT = 6000;
+
+/**
+ * ของที่ปลั๊กอินอื่นส่งออกไว้ใน setup() → { ai: { guide, tools } } (ได้จาก host.pluginExports('ai'))
+ * แปลงเป็นเครื่องมือของ AI ชื่อ <plugin id>__<ชื่อเครื่องมือ> + คู่มือการใช้ปลั๊กอินไว้ใส่ในข้อความระบบ
+ */
+export function extensionTools(exports = []) {
+  const tools = [];
+  const guides = [];
+  for (const { id, name, value } of exports || []) {
+    if (!value || typeof value !== 'object') continue;
+    const pluginName = String(name || id);
+    if (typeof value.guide === 'string' && value.guide.trim()) {
+      guides.push({ name: pluginName, guide: value.guide.trim().slice(0, GUIDE_LIMIT) });
+    }
+    for (const t of Array.isArray(value.tools) ? value.tools.slice(0, 12) : []) {
+      if (!t || !EXT_TOOL_NAME.test(String(t.name)) || typeof t.run !== 'function') continue;
+      const full = `${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}__${t.name}`.slice(0, 64);
+      tools.push({
+        name: full,
+        write: Boolean(t.write),
+        description: `[Plugin: ${pluginName}] ${String(t.description || '').slice(0, 1000)}`,
+        parameters:
+          t.parameters && typeof t.parameters === 'object' ? t.parameters : { type: 'object', properties: {}, additionalProperties: false },
+        plugin: pluginName,
+        run: t.run,
+        describe: typeof t.describe === 'function' ? t.describe : null,
+      });
+    }
+  }
+  return { tools, guides, byName: new Map(tools.map((t) => [t.name, t])) };
+}
+
 /** ข้อความระบบ: บทบาท + โครงบอร์ด (ไม่ใส่การ์ดทั้งหมด — ให้เรียก list_cards เอา) */
-export function systemPrompt(board, { allowEdits = true, instructions = '', now = new Date() } = {}) {
+export function systemPrompt(board, { allowEdits = true, instructions = '', now = new Date(), guides = [] } = {}) {
   const cards = board.cards.filter((c) => !c.archived);
   const columns = [...board.columns]
     .sort((a, b) => a.order - b.order)
@@ -239,18 +275,36 @@ export function systemPrompt(board, { allowEdits = true, instructions = '', now 
       '- Editing is turned off for this board: you can read cards but cannot change anything. If asked to change something, say so.'
     );
   }
+  if (guides.length) {
+    lines.push(
+      '',
+      'Plugins enabled on this board — follow each plugin\'s guide when the user asks about its features.',
+      'Tools whose names start with a plugin id belong to that plugin; prefer them over editing card text by hand when they fit.'
+    );
+    for (const g of guides) lines.push('', `## ${g.name}`, g.guide);
+  }
   if (String(instructions || '').trim()) {
     lines.push('', 'Additional instructions from the board owner:', String(instructions).trim());
   }
   return lines.join('\n');
 }
 
-/** เครื่องมือที่เปิดให้ใช้ตามสิทธิ์ของบอร์ด */
-export const toolsFor = ({ allowEdits = true } = {}) => TOOLS.filter((t) => allowEdits || !t.write);
+/** เครื่องมือที่เปิดให้ใช้ตามสิทธิ์ของบอร์ด (รวมเครื่องมือจากปลั๊กอินอื่น) */
+export const toolsFor = ({ allowEdits = true, extra = [] } = {}) => [...TOOLS, ...extra].filter((t) => allowEdits || !t.write);
 
 /* ---------------- คำอธิบายสั้น ๆ สำหรับแสดงในแชท / กล่องขออนุญาต ---------------- */
 
-export function describeCall(name, input = {}, board = null) {
+export function describeCall(name, input = {}, board = null, extra = null) {
+  const ext = extra?.get(name);
+  if (ext) {
+    try {
+      const text = ext.describe?.(input);
+      if (text) return `${ext.plugin}: ${String(text).slice(0, 200)}`;
+    } catch {
+      /* คำอธิบายของปลั๊กอินพัง — ใช้ชื่อเครื่องมือแทน */
+    }
+    return `${ext.plugin}: ${name.split('__').pop()}`;
+  }
   const num = input.number !== undefined ? `#${input.number}` : '';
   const title = board && input.number !== undefined ? board.cards.find((c) => c.number === Number(input.number))?.title : null;
   const card = title ? `${num} “${title}”` : num;
@@ -297,13 +351,19 @@ const json = (value) => JSON.stringify(value);
  * สร้างตัวรันเครื่องมือ — คืน { content: string, isError: boolean }
  * host = host ของปลั๊กอิน (ใช้ board() อ่านสถานะล่าสุด และ request() แก้ข้อมูล)
  */
-export function makeExecutor(host, { allowEdits = true } = {}) {
+export function makeExecutor(host, { allowEdits = true, extra = null } = {}) {
   return async function run(name, input) {
-    const tool = TOOL_BY_NAME.get(name);
+    const ext = extra?.get(name);
+    const tool = ext || TOOL_BY_NAME.get(name);
     if (!tool) return { content: `ไม่มีเครื่องมือชื่อ ${name}`, isError: true };
     if (tool.write && !allowEdits) return { content: 'บอร์ดนี้ปิดสิทธิ์ให้ AI แก้ไขไว้', isError: true };
     const args = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
     try {
+      if (ext) {
+        // เครื่องมือของปลั๊กอินอื่น: คืนข้อความหรือ object (ส่งเป็น JSON ให้ AI)
+        const out = await ext.run(args);
+        return { content: typeof out === 'string' ? out : json(out ?? { ok: true }), isError: false };
+      }
       return { content: await RUN[name](host, args), isError: false };
     } catch (err) {
       const message = err instanceof ToolError ? err.message : err?.message || String(err);

@@ -15,8 +15,13 @@ import {
   MAP_BOUNDS,
   ICON_KEYS,
   FIELD_LABELS,
+  SHORT_SPRITES,
+  BLIP_NAME_SET,
+  blipImage,
 } from './blips.js';
-import { createBlipCompletions } from './complete.js';
+import { BLIP_NAMES } from './blip-names.js';
+import { createBlipCompletions, blipEditorMenu } from './complete.js';
+import { createBlipAi } from './ai.js';
 
 const LEAFLET = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/';
 
@@ -95,10 +100,23 @@ async function ensureLeaflet(host) {
 
 const colorOf = (b, column) => b.color || column?.color || '#d4d4d4';
 
-function pinHtml(b, color, cls = '') {
-  const glyph = b.icon === 'pin' ? '<span class="rb-pin-dot"></span>' : svg(ICON_PATHS[b.icon], 13);
-  return `<span class="rb-pin rb-${b.source} ${cls}" style="--pin:${color}">${glyph}</span>`;
+/** รูป blip ของเกม (ชื่อมาจากรายการที่รู้จักเท่านั้น จึงใส่ใน URL ได้ปลอดภัย) */
+const spriteOf = (b) => (BLIP_NAME_SET.has(b.sprite) ? b.sprite : SHORT_SPRITES[b.icon] || SHORT_SPRITES.pin);
+const spriteHtml = (b) => `<span class="rb-sprite" style="background-image:url('${blipImage(spriteOf(b))}')"></span>`;
+
+/** ชื่อแบบอ่านง่ายของรูป blip: ไอคอนแบบสั้นใช้ชื่อไทย · รูปของเกมใช้ชื่อรูป */
+function spriteLabel(b) {
+  const sprite = spriteOf(b);
+  return sprite === SHORT_SPRITES[b.icon] ? ICON_LABELS[b.icon] : sprite.replace(/^blip_/, '').replace(/_/g, ' ');
 }
+
+/** หมุดบนแผนที่: วงกลมเข้ม ขอบสีตามคอลัมน์/สีของ blip และรูป blip ของเกมตรงกลาง */
+function pinHtml(b, color, cls = '') {
+  return `<span class="rb-pin rb-${b.source} ${cls}" style="--pin:${color}">${spriteHtml(b)}</span>`;
+}
+
+/** รูป blip ขนาดเล็กในรายการ */
+const chipHtml = (b, color) => `<span class="rb-chip" style="--pin:${color}">${spriteHtml(b)}</span>`;
 
 /** ข้อความในช่อง -> HTML แบบบรรทัดเดียว (ลิงก์ ตัวหนา ฯลฯ ใช้ตัวแปลงของเว็บหลัก) */
 function inline(host, text) {
@@ -262,10 +280,15 @@ async function addBlip({ host, shared }, { cardId = null, x = null, y = null } =
   }
   fields.push({
     key: 'icon',
-    label: 'ไอคอน',
+    label: 'รูป blip',
     type: 'select',
     value: 'pin',
-    options: ICON_KEYS.map((k) => ({ value: k, label: ICON_LABELS[k] })),
+    // 8 แบบที่ใช้บ่อยก่อน แล้วตามด้วยรูป blip ของเกมทั้งหมด (พิมพ์ตัวอักษรในรายการเพื่อกระโดดหาได้)
+    options: [
+      ...ICON_KEYS.map((k) => ({ value: k, label: `${ICON_LABELS[k]} (${SHORT_SPRITES[k]})` })),
+      ...BLIP_NAMES.map((n) => ({ value: n, label: n })),
+    ],
+    hint: 'รูปชุดเดียวกับ redlookup.com/blips — ในการ์ดพิมพ์ชื่อรูปหรือ hash ในช่อง icon ได้เลย',
   });
   fields.push({ key: 'role', label: 'หน้าที่ของจุดนี้ (ไม่บังคับ)', value: '', placeholder: 'เช่น ขายของใช้และเสบียง' });
   fields.push({ key: 'sells', label: 'ขายอะไร (ไม่บังคับ)', value: '', placeholder: 'คั่นด้วยจุลภาค เช่น ขนมปัง, นม, กระสุน' });
@@ -451,7 +474,7 @@ function createMapView(ctx) {
             .map(
               (b) => `
             <button type="button" class="rb-item" data-rb-focus="${esc(b.id)}">
-              <span class="rb-item-icon" style="color:${esc(colorOf(b, b.column))}">${svg(ICON_PATHS[b.icon], 13)}</span>
+              <span class="rb-item-icon">${chipHtml(b, esc(colorOf(b, b.column)))}</span>
               <span class="rb-item-name">${esc(b.name)}${b.role ? `<span class="rb-item-role">${esc(b.role)}</span>` : ''}</span>
               ${b.sounds?.length ? '<span class="rb-item-tag">เสียง</span>' : ''}
               ${b.source === 'auto' ? '<span class="rb-item-tag">อัตโนมัติ</span>' : ''}
@@ -681,6 +704,59 @@ function goToMap(ctx, focus) {
   ctx.host.openView('map');
 }
 
+/* ---------------- แผนที่แบบหน้าต่างลอย: กดจากการ์ดแล้วดูได้เลย ไม่ต้องออกจากการ์ด ---------------- */
+
+let mapModal = null;
+
+function closeMapModal() {
+  if (!mapModal) return;
+  window.removeEventListener('keydown', mapModal.onKey, true);
+  mapModal.view.unmount();
+  mapModal.layer.remove();
+  mapModal = null;
+}
+
+/** เปิดแผนที่เต็มในหน้าต่างลอยเหนือการ์ด — focus = { id } (blip) หรือ { cardId } (ทุกจุดของการ์ด) */
+function openMapModal(ctx, focus, title = '') {
+  closeMapModal();
+  const { host } = ctx;
+  const esc = host.esc;
+  const layer = document.createElement('div');
+  layer.className = 'rb-modal-layer';
+  layer.innerHTML = `
+    <div class="rb-modal" role="dialog" aria-modal="true" aria-label="แผนที่">
+      <div class="rb-modal-head">
+        <span class="rb-modal-title">${svg(ICON_PATHS.pin, 14)} แผนที่${title ? `<span class="rb-modal-sub">${esc(title)}</span>` : ''}</span>
+        <button type="button" class="btn btn-sm" data-rb-modal-tab title="ปิดการ์ดแล้วไปที่แท็บแผนที่">เปิดในแท็บแผนที่</button>
+        <button type="button" class="btn btn-invisible btn-icon" data-rb-modal-close title="ปิด (Esc)" aria-label="ปิด">${host.icons?.x || '×'}</button>
+      </div>
+      <div class="rb-modal-body"></div>
+    </div>`;
+  document.body.append(layer);
+
+  // ใช้สถานะแยกจากแท็บแผนที่ (ไม่แย่งจุดที่ต้องซูมไปหากัน)
+  const view = createMapView({ host, shared: { pendingFocus: focus, get lastCardId() { return ctx.shared.lastCardId; }, set lastCardId(v) { ctx.shared.lastCardId = v; } } });
+  const onKey = (e) => {
+    if (e.key !== 'Escape' || document.querySelector('.dialog-layer')) return; // กล่องฟอร์มเปิดอยู่ = ให้กล่องนั้นปิดก่อน
+    e.preventDefault();
+    e.stopPropagation(); // ปิดแค่แผนที่ การ์ดข้างหลังยังเปิดอยู่
+    closeMapModal();
+  };
+  window.addEventListener('keydown', onKey, true);
+  layer.addEventListener('mousedown', (e) => {
+    if (e.target === layer) closeMapModal();
+  });
+  layer.querySelector('[data-rb-modal-close]').addEventListener('click', closeMapModal);
+  layer.querySelector('[data-rb-modal-tab]').addEventListener('click', () => {
+    closeMapModal();
+    goToMap(ctx, focus);
+  });
+  // เปิดการ์ดใบอื่นจากในแผนที่ = ปิดหน้าต่างนี้ก่อน การ์ดจะได้ไม่ไปอยู่ข้างหลัง
+  layer.addEventListener('click', (e) => e.target.closest('[data-rb-open]') && closeMapModal(), true);
+  mapModal = { layer, view, onKey };
+  view.mount(layer.querySelector('.rb-modal-body'));
+}
+
 /** แถบข้าง: แผนที่ย่อของทุกจุดในการ์ด + รายชื่อ */
 function renderCardPanel(ctx, section, card, { readonly = false } = {}) {
   const { host } = ctx;
@@ -703,7 +779,7 @@ function renderCardPanel(ctx, section, card, { readonly = false } = {}) {
                .map(
                  (b, i) => `
                <button type="button" class="rb-panel-item" data-rb-show="${esc(`${card.id}:${b.line}:${i}`)}" title="ดูบนแผนที่">
-                 <span class="rb-item-icon">${svg(ICON_PATHS[b.icon], 12)}</span>
+                 <span class="rb-item-icon">${chipHtml(b, esc(colorOf(b, column)))}</span>
                  <span class="rb-panel-name">${esc(b.name)}</span>
                </button>`
                )
@@ -716,7 +792,7 @@ function renderCardPanel(ctx, section, card, { readonly = false } = {}) {
 
   section.addEventListener('click', (e) => {
     const show = e.target.closest('[data-rb-show]');
-    if (show) return goToMap(ctx, { id: show.dataset.rbShow });
+    if (show) return openMapModal(ctx, { id: show.dataset.rbShow }, `#${card.number} ${card.title}`);
     if (e.target.closest('[data-rb-new]')) addBlip(ctx, { cardId: card.id });
   });
 
@@ -726,7 +802,7 @@ function renderCardPanel(ctx, section, card, { readonly = false } = {}) {
       host,
       mini,
       blips.map((b) => ({ ...b, pinColor: colorOf(b, column) })),
-      { zoom: 4, onOpen: () => goToMap(ctx, { cardId: card.id }) }
+      { zoom: 4, onOpen: () => openMapModal(ctx, { cardId: card.id }, `#${card.number} ${card.title}`) }
     );
   }
 }
@@ -773,7 +849,7 @@ function decorateCardBody(ctx, bodyEl, card) {
             ${pinHtml(b, esc(color))}
             <div class="rb-card-title">
               <strong>${esc(b.name)}</strong>
-              <span class="rb-card-sub">${esc(ICON_LABELS[b.icon] || '')}${b.hours ? ` · ${esc(b.hours)}` : ''}</span>
+              <span class="rb-card-sub">${esc(spriteLabel(b))}${b.hours ? ` · ${esc(b.hours)}` : ''}</span>
             </div>
             <button type="button" class="btn btn-sm" data-rb-card-show>${svg(ICON_PATHS.pin, 13)} ดูบนแผนที่</button>
           </div>
@@ -785,11 +861,11 @@ function decorateCardBody(ctx, bodyEl, card) {
             </div>
           </div>
         </div>`;
-      wrap.querySelector('[data-rb-card-show]').addEventListener('click', () => goToMap(ctx, { id }));
+      wrap.querySelector('[data-rb-card-show]').addEventListener('click', () => openMapModal(ctx, { id }, b.name));
       wrap.querySelector('[data-rb-copy]').addEventListener('click', (e) => host.copy(e.currentTarget.dataset.rbCopy, 'คัดลอกพิกัดแล้ว'));
       mountMini(host, wrap.querySelector('[data-rb-card-map]'), [{ ...b, pinColor: color }], {
         zoom: 5,
-        onOpen: () => goToMap(ctx, { id }),
+        onOpen: () => openMapModal(ctx, { id }, b.name),
       });
     } else {
       wrap.innerHTML = `
@@ -828,5 +904,9 @@ export default function setup(host) {
     cardBody: (bodyEl, card) => decorateCardBody(ctx, bodyEl, card),
     // IntelliSense ของ !blip ตอนแก้รายละเอียดการ์ด (ต้องใช้ Tanva Kanban รุ่นที่มีคำแนะนำตอนพิมพ์)
     completions: createBlipCompletions(host, { iconPaths: ICON_PATHS, iconLabels: ICON_LABELS }),
+    // คลิกขวาในช่องเขียน → แทรก !blip
+    editorMenu: (ctx) => blipEditorMenu(ctx, { iconPaths: ICON_PATHS }),
+    // ให้ผู้ช่วย AI รู้วิธีเขียน !blip และเรียกดู/เพิ่ม blip ได้
+    ai: createBlipAi(host),
   };
 }

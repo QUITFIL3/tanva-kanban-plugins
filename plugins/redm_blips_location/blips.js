@@ -19,6 +19,8 @@
  * โดยใช้ข้อความในบรรทัดนั้น (หรือหัวข้อแม่ของรายการ) เป็นชื่อ
  */
 
+import { BLIP_NAMES, BLIP_IMAGE_BASE } from './blip-names.js';
+
 /* ---------------- พิกัด ---------------- */
 
 // ค่าแปลงเดียวกับแผนที่ของชุมชน RDR2 (RDOMap / RDR2CollectorsMap) — แผนที่แบบ Leaflet CRS.Simple
@@ -91,6 +93,65 @@ export function iconKey(value) {
   for (const [key, names] of Object.entries(ICON_ALIASES)) if (names.includes(v)) return key;
   return 'pin';
 }
+
+/* ---------------- รูป blip ของเกม (ชุดเดียวกับ redlookup.com/blips) ---------------- */
+
+/** ไอคอนแบบสั้นเดิม → รูป blip ของเกมที่ใกล้เคียงที่สุด */
+export const SHORT_SPRITES = {
+  pin: 'blip_poi',
+  shop: 'blip_shop_store',
+  npc: 'blip_ambient_npc',
+  house: 'blip_proc_home',
+  camp: 'blip_camp',
+  quest: 'blip_objective',
+  danger: 'blip_attention',
+  info: 'blip_ambient_newspaper',
+};
+
+export const BLIP_NAME_SET = new Set(BLIP_NAMES);
+
+/** hash ของชื่อแบบที่เกมใช้ (joaat) เป็นเลขมีเครื่องหมาย 32 บิต เช่น blip_shop_store → 1475879922 */
+export function joaat(name) {
+  let h = 0;
+  for (const ch of String(name).toLowerCase()) {
+    h = (h + ch.charCodeAt(0)) >>> 0;
+    h = (h + (h << 10)) >>> 0;
+    h = (h ^ (h >>> 6)) >>> 0;
+  }
+  h = (h + (h << 3)) >>> 0;
+  h = (h ^ (h >>> 11)) >>> 0;
+  h = (h + (h << 15)) >>> 0;
+  return h | 0;
+}
+
+let hashIndex = null;
+const byHash = () => (hashIndex ||= new Map(BLIP_NAMES.map((n) => [joaat(n), n])));
+
+/** "1475879922" / "-861219276" / "3433748020" / "0x57F823F2" → hash แบบมีเครื่องหมาย หรือ null */
+function parseHash(v) {
+  if (/^0x[0-9a-f]{1,8}$/i.test(v)) return parseInt(v, 16) | 0;
+  if (/^-?\d{1,10}$/.test(v)) {
+    const n = Number(v);
+    if (n >= -2147483648 && n <= 4294967295) return n | 0;
+  }
+  return null;
+}
+
+/**
+ * ค่าในช่อง icon → ชื่อรูป blip ของเกม
+ * รับได้ทั้ง blip_shop_store / shop_store (ไม่มี blip_ นำหน้า) / hash จากเกม / ไอคอนแบบสั้นเดิม (shop, npc, ร้าน …)
+ */
+export function blipSprite(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (!v) return SHORT_SPRITES.pin;
+  if (BLIP_NAME_SET.has(v)) return v;
+  if (BLIP_NAME_SET.has(`blip_${v}`)) return `blip_${v}`;
+  const hash = parseHash(v);
+  if (hash !== null) return byHash().get(hash) || SHORT_SPRITES.pin;
+  return SHORT_SPRITES[iconKey(v)];
+}
+
+export const blipImage = (sprite) => `${BLIP_IMAGE_BASE}${sprite}.png`;
 
 export const NAMED_COLORS = {
   red: '#e5484d',
@@ -295,6 +356,7 @@ export function parseBlips(body, { title = '', autoDetect = true } = {}) {
         ...pos,
         name: name.slice(0, 80),
         icon: iconKey(valueOf(fields.icon)),
+        sprite: blipSprite(valueOf(fields.icon)),
         color: safeColor(valueOf(fields.color)),
         radius: Number.isFinite(radius) && radius > 0 ? Math.min(radius, 5000) : null,
         note: valueOf(fields.note).slice(0, 500),
@@ -342,6 +404,7 @@ export function parseBlips(body, { title = '', autoDetect = true } = {}) {
             ...pos,
             name,
             icon: 'pin',
+            sprite: SHORT_SPRITES.pin,
             color: null,
             radius: null,
             note: '',

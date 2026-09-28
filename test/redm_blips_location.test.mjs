@@ -14,8 +14,13 @@ import {
   iconKey,
   safeColor,
   blipContext,
+  blipSprite,
+  blipImage,
+  joaat,
 } from '../plugins/redm_blips_location/blips.js';
-import { createBlipCompletions } from '../plugins/redm_blips_location/complete.js';
+import { createBlipCompletions, blipEditorMenu } from '../plugins/redm_blips_location/complete.js';
+import { createBlipAi } from '../plugins/redm_blips_location/ai.js';
+import { BLIP_NAMES } from '../plugins/redm_blips_location/blip-names.js';
 
 test('บล็อก !blip แบบพื้นฐาน (coords + name)', () => {
   const body = ['รายละเอียดร้าน', '', '!blip', ' - coords: vec2(-1745.5, -390.9)', ' - name: ร้านค้า'].join('\n');
@@ -233,15 +238,20 @@ test('บริบท: ค่าของช่อง — ไอคอน สี
   assert.equal(icon.key, 'icon');
   assert.equal(icon.value, 'sh');
   const icons = suggest('!blip\n - icon: |');
-  assert.equal(icons.items.length, 8);
+  assert.equal(icons.items.length, 8 + BLIP_NAMES.length, 'แบบสั้น 8 แบบ + รูป blip ของเกมทั้งหมด');
   assert.deepEqual(icons.items.find((i) => i.label === 'shop'), {
     label: 'shop',
     detail: 'ร้านค้า',
-    icon: 'S',
-    filter: 'shop shop store ร้าน ร้านค้า',
-    doc: 'ไอคอน **ร้านค้า** บนหมุด\n\nพิมพ์แบบนี้ก็ได้: `shop` `store` `ร้าน` `ร้านค้า`',
+    image: blipImage('blip_shop_store'),
+    filter: 'shop shop store ร้าน ร้านค้า blip_shop_store',
+    doc: 'ไอคอน **ร้านค้า** — ใช้รูป `blip_shop_store` ของเกม\n\nพิมพ์แบบนี้ก็ได้: `shop` `store` `ร้าน` `ร้านค้า`',
     insert: 'shop',
   });
+  const gunsmith = icons.items.find((i) => i.label === 'blip_shop_gunsmith');
+  assert.equal(gunsmith.insert, 'blip_shop_gunsmith');
+  assert.match(gunsmith.image, /^https:\/\/cdn\.jsdelivr\.net\/gh\/.+\/blips\/images\/blip_shop_gunsmith\.png$/);
+  assert.match(gunsmith.filter, /ปืน/, 'ค้นเป็นภาษาไทยได้');
+  assert.match(gunsmith.doc, new RegExp(`\`${joaat('blip_shop_gunsmith')}\``), 'บอก hash ไว้ใช้ในสคริปต์');
 
   const colors = suggest('!blip\n - สี: |');
   assert.equal(colors.items.find((i) => i.label === 'red').color, '#e5484d');
@@ -290,4 +300,105 @@ test('บริบท: ไม่เกี่ยวกับ !blip = ไม่แ
   assert.equal(suggest('!blip\n - co|ords: vec3(1, 2)'), null, 'ไม่แนะนำชื่อช่องทับช่องที่มีอยู่แล้ว');
   assert.equal(suggest('!blip\n - coords: vec2(1, 2)\n\n|'), null, 'บรรทัดว่างจบบล็อกแล้ว');
   assert.equal(suggest('!blip\n - note:\n   - |'), null, 'รายการย่อยของช่องที่ไม่ใช่รายการ');
+});
+
+/* ---------------- รูป blip ของเกม (ชุดเดียวกับ redlookup.com/blips) ---------------- */
+
+test('รูป blip: รับชื่อรูปของเกม ชื่อไม่มี blip_ นำหน้า hash และไอคอนแบบสั้นเดิม', () => {
+  assert.equal(BLIP_NAMES.length, 586);
+  assert.equal(new Set(BLIP_NAMES).size, BLIP_NAMES.length, 'ไม่มีชื่อซ้ำ');
+  assert.equal(joaat('blip_shop_store'), 1475879922, 'hash แบบเดียวกับเกม');
+  assert.equal(joaat('blip_ambient_bounty_hunter'), -861219276);
+
+  assert.equal(blipSprite('blip_shop_gunsmith'), 'blip_shop_gunsmith');
+  assert.equal(blipSprite('BLIP_SHOP_GUNSMITH'), 'blip_shop_gunsmith');
+  assert.equal(blipSprite('shop_gunsmith'), 'blip_shop_gunsmith');
+  assert.equal(blipSprite('1475879922'), 'blip_shop_store');
+  assert.equal(blipSprite('-861219276'), 'blip_ambient_bounty_hunter', 'hash มีเครื่องหมาย');
+  assert.equal(blipSprite('3433748020'), 'blip_ambient_bounty_hunter', 'hash ไม่มีเครื่องหมาย');
+  assert.equal(blipSprite('0x57F823F2'), 'blip_shop_store', 'hash แบบ hex');
+  assert.equal(blipSprite('shop'), 'blip_shop_store', 'ไอคอนแบบสั้นเดิมใช้รูปของเกมที่ใกล้เคียง');
+  assert.equal(blipSprite('ร้าน'), 'blip_shop_store');
+  assert.equal(blipSprite('danger'), 'blip_attention');
+  assert.equal(blipSprite(''), 'blip_poi');
+  assert.equal(blipSprite('ไม่มีอยู่จริง'), 'blip_poi');
+  assert.equal(blipSprite('99999999999'), 'blip_poi', 'ตัวเลขเกิน 32 บิต');
+
+  const { blips } = parseBlips('!blip\n - coords: vec2(1, 2)\n - icon: blip_shop_doctor\n\nจุดอื่น vec3(3, 4, 5)');
+  assert.deepEqual(
+    blips.map((b) => [b.sprite, b.source]),
+    [
+      ['blip_shop_doctor', 'blip'],
+      ['blip_poi', 'auto'],
+    ]
+  );
+  assert.equal(
+    blipImage('blip_poi'),
+    'https://cdn.jsdelivr.net/gh/BryceCanyonCounty/rdr3-nativedb-data@0297f047a82c244866dc5936e6abd6d6a6d3c869/blips/images/blip_poi.png'
+  );
+});
+
+test('เมนูคลิกขวา: แทรก !blip จากแม่แบบ (เป็นย่อหน้าของตัวเอง)', () => {
+  const [menu] = blipEditorMenu({ card: { attachments: [{ name: 'ทักทาย.wav', mime: 'audio/wav' }] } }, { iconPaths: { pin: 'P' } });
+  assert.equal(menu.label, 'แทรก !blip');
+  assert.equal(menu.icon, 'P');
+  assert.deepEqual(
+    menu.items.map((i) => i.label),
+    ['!blip', '!blip ร้านค้า', '!blip NPC', '!blip จุดอันตราย', '!blip ครบทุกช่อง']
+  );
+  assert.ok(menu.items.every((i) => i.block === true && i.insert.startsWith('!blip\n')));
+  assert.match(menu.items[2].insert, /sound: \$\{8:ทักทาย\.wav\}/, 'ใส่ไฟล์เสียงที่แนบไว้ให้เป็นค่าตั้งต้น');
+});
+
+test('ให้ผู้ช่วย AI ใช้: คู่มือ !blip + list_blips + add_blip (แก้การ์ดผ่าน host)', async () => {
+  const updates = [];
+  const cards = [
+    { id: 'c1', number: 1, title: 'ร้านค้า', body: '!blip\n - coords: vec3(-322.25, 803.97, 117.88)\n - name: ร้านค้า Valentine\n - icon: shop\n - sells: ขนมปัง, นม' },
+    { id: 'c2', number: 2, title: 'ว่าง', body: 'ยังไม่มีอะไร' },
+  ];
+  const host = {
+    board: () => ({ cards }),
+    settings: () => ({ autoDetect: true }),
+    updateCard: async (id, patch) => {
+      updates.push({ id, patch });
+      return { id, ...patch };
+    },
+  };
+  const ai = createBlipAi(host);
+  assert.match(ai.guide, /!blip/);
+  assert.match(ai.guide, /blip_shop_store/);
+  assert.deepEqual(
+    ai.tools.map((t) => [t.name, Boolean(t.write)]),
+    [
+      ['list_blips', false],
+      ['add_blip', true],
+    ]
+  );
+
+  const list = await ai.tools[0].run({ query: 'นม' });
+  assert.equal(list.total, 1);
+  assert.deepEqual(list.blips[0], {
+    name: 'ร้านค้า Valentine',
+    coords: 'vec3(-322.25, 803.97, 117.88)',
+    icon: 'blip_shop_store',
+    card: 1,
+    cardTitle: 'ร้านค้า',
+    sells: ['ขนมปัง', 'นม'],
+  });
+  assert.equal((await ai.tools[0].run({ card: 2 })).total, 0);
+
+  const add = ai.tools[1];
+  assert.equal(add.describe({ card: 2, name: 'ร้านปืน' }), 'เพิ่ม blip “ร้านปืน” ลงการ์ด #2');
+  const res = await add.run({ card: 2, x: -281, y: 780.7, z: 119.5, name: 'ร้านปืน', icon: 'blip_shop_gunsmith', sells: ['ปืน', 'กระสุน'] });
+  assert.equal(res.ok, true);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].id, 'c2');
+  assert.equal(
+    updates[0].patch.body,
+    'ยังไม่มีอะไร\n\n!blip\n - coords: vec3(-281, 780.7, 119.5)\n - name: ร้านปืน\n - icon: blip_shop_gunsmith\n - sells: ปืน, กระสุน\n'
+  );
+  const parsed = parseBlips(updates[0].patch.body).blips[0];
+  assert.equal(parsed.sprite, 'blip_shop_gunsmith', 'บล็อกที่ AI เพิ่มอ่านกลับได้ถูกต้อง');
+  await assert.rejects(() => add.run({ card: 99, x: 1, y: 2, name: 'x' }), /ไม่พบการ์ด #99/);
+  await assert.rejects(() => add.run({ card: 1, x: 'abc', y: 2, name: 'x' }), /x และ y/);
 });

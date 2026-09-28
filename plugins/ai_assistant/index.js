@@ -6,7 +6,7 @@
  * - การแก้บอร์ดทุกครั้งใช้สิทธิ์ของคนที่สั่ง และ (ค่าเริ่มต้น) ต้องกดอนุญาตก่อน
  * - API key อยู่ที่เซิร์ฟเวอร์ (แอดมินตั้งในหน้าตั้งค่าปลั๊กอิน) — เบราว์เซอร์คุยผ่าน proxy เท่านั้น
  */
-import { TOOL_BY_NAME, systemPrompt, toolsFor, makeExecutor, describeCall } from './tools.js';
+import { TOOL_BY_NAME, systemPrompt, toolsFor, makeExecutor, describeCall, extensionTools } from './tools.js';
 import { runClaudeTurn } from './claude.js';
 import { runOpenAITurn } from './openai.js';
 import { resolveProvider } from './providers.js';
@@ -26,6 +26,27 @@ const SUGGESTIONS = [
 const QUICK = {
   summary: (n) => `สรุปการ์ด #${n} ให้หน่อย: เป้าหมาย สิ่งที่เสร็จแล้ว และสิ่งที่ยังค้าง`,
   checklist: (n) => `ช่วยแตกงานในการ์ด #${n} เป็นเช็กลิสต์ขั้นตอนที่ทำได้จริง แล้วเพิ่มต่อท้ายรายละเอียดของการ์ดนั้น`,
+};
+
+/** เวลาที่ผ่านไปแบบนาฬิกา 0:07 / 1:05 */
+const clock = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+/** เวลาที่ใช้แบบอ่านง่าย 12 วินาที / 1 นาที 5 วินาที */
+export const duration = (ms) => {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s} วินาที`;
+  return `${Math.floor(s / 60)} นาที${s % 60 ? ` ${s % 60} วินาที` : ''}`;
+};
+/** ประโยคล่าสุดของความคิด ไว้โชว์ในแถบสถานะว่ากำลังคิดเรื่องอะไร */
+export const latestThought = (text, max = 90) => {
+  const lines = String(text || '')
+    .split(/\n+/)
+    .map((l) => l.replace(/^[#>*\-\s]+|\*+/g, '').trim())
+    .filter(Boolean);
+  const last = lines.at(-1) || '';
+  return last.length > max ? `${last.slice(0, max - 1)}…` : last;
 };
 
 /** บทสนทนาแยกตามบอร์ด — อยู่จนกว่าจะรีเฟรชหน้าหรือกด "เริ่มใหม่" */
@@ -49,6 +70,10 @@ function createChatView(host) {
   let controller = null;
   let approveAll = false;
   let frame = 0;
+  let thinkFrame = 0;
+  let status = null; // ระหว่างทำงาน: { label, started, stepStarted, tools } — แถบสถานะเหนือช่องพิมพ์
+  let ticker = 0; // นับเวลาทุกวินาที
+  let thinking = null; // ก้อน "ความคิด" ที่กำลังเขียนอยู่
   const waiting = new Map(); // id ของกล่องขออนุญาต -> resolve
 
   const q = (sel) => root?.querySelector(sel);
@@ -110,11 +135,33 @@ function createChatView(host) {
                       : `<div class="ai-approval-state">${it.status === 'ok' ? 'อนุญาตแล้ว' : 'ไม่อนุญาต'}</div>`
                   }
                 </div>`;
+      case 'thinking':
+        return thinkingHtml(it);
+      case 'meta':
+        return `<div class="ai-meta">${esc(it.text)}</div>`;
       case 'error':
         return `<div class="ai-error">${esc(it.text)}</div>`;
       default:
         return `<div class="ai-note">${esc(it.text)}</div>`;
     }
+  }
+
+  /** ก้อน "ความคิด": ระหว่างคิดโชว์เวลาและประโยคล่าสุด · คิดเสร็จกดดูสรุปความคิดทั้งหมดได้ */
+  function thinkingHtml(it) {
+    const { esc, markdown } = host;
+    const live = !it.ended;
+    const text = String(it.text || '').trim();
+    const time = live ? clock(Date.now() - it.started) : duration(it.ended - it.started);
+    const head = `
+      <span class="ai-think-icon">${live ? '<span class="ai-spin"></span>' : svg(SPARKLE, 11)}</span>
+      <span class="ai-think-title">${live ? 'กำลังคิด' : 'คิดอยู่'} <span data-ai-think-time>${time}</span></span>
+      ${text ? `<span class="ai-think-peek" data-ai-think-peek>${esc(latestThought(text))}</span>` : ''}`;
+    if (!text) return `<div class="ai-think${live ? ' live' : ''}" data-ai-item="${it.id}"><div class="ai-think-head">${head}</div></div>`;
+    return `
+      <details class="ai-think${live ? ' live' : ''}" data-ai-item="${it.id}" data-ai-think="${it.id}"${it.open ? ' open' : ''}>
+        <summary class="ai-think-head">${head}</summary>
+        <div class="ai-think-body markdown" data-ai-think-body>${markdown(text)}</div>
+      </details>`;
   }
 
   function renderLog() {
@@ -134,6 +181,63 @@ function createChatView(host) {
     }
     log.innerHTML = c.log.map(itemHtml).join('');
     if (near || busy) log.scrollTop = log.scrollHeight;
+  }
+
+  /* ---------- สถานะระหว่างทำงาน: กำลังทำอะไร + เวลาที่ใช้ไป ---------- */
+
+  function paintStatus() {
+    const el = q('[data-ai-status]');
+    if (!el) return;
+    el.hidden = !status;
+    if (!status) return (el.innerHTML = '');
+    el.innerHTML = `
+      <span class="ai-spin"></span>
+      <span class="ai-status-label">${host.esc(status.label)}</span>
+      <span class="ai-status-time" title="เวลาที่ใช้ไปตั้งแต่ส่งคำสั่ง">${clock(Date.now() - status.started)}</span>`;
+    const t = thinking && q(`[data-ai-item="${thinking.id}"] [data-ai-think-time]`);
+    if (t) t.textContent = clock(Date.now() - thinking.started);
+  }
+
+  function setStatus(label) {
+    if (!status) return;
+    status.label = label;
+    paintStatus();
+  }
+
+  /** เริ่ม/ต่อก้อนความคิด (Claude ส่งสรุปมาทีละนิด · บางเจ้าส่งมาทั้งก้อนหลังตอบ) */
+  function addThinking(delta = '') {
+    if (!thinking) {
+      thinking = push({ type: 'thinking', text: '', started: status?.stepStarted ?? Date.now(), ended: null, open: false });
+    }
+    thinking.text += delta;
+    const thought = latestThought(thinking.text);
+    setStatus(thought ? `กำลังคิด — ${thought}` : 'กำลังคิด');
+    paintThinking();
+  }
+
+  function endThinking() {
+    if (!thinking) return;
+    thinking.ended = Date.now();
+    thinking = null;
+    renderLog();
+  }
+
+  /** ระหว่างคิด วาดใหม่แค่ประโยคล่าสุด (และเนื้อหาถ้ากางอยู่) ไม่เกินเฟรมละครั้ง */
+  function paintThinking() {
+    if (thinkFrame || !thinking) return;
+    thinkFrame = requestAnimationFrame(() => {
+      thinkFrame = 0;
+      const it = thinking;
+      if (!it) return;
+      const el = q(`[data-ai-item="${it.id}"]`);
+      // ก้อนที่ยังไม่มีข้อความเป็นกล่องธรรมดา พอมีข้อความต้องวาดใหม่เป็นแบบกดกางได้
+      if (!el || !el.matches('details')) return renderLog();
+      const peek = el.querySelector('[data-ai-think-peek]');
+      if (peek) peek.textContent = latestThought(it.text);
+      if (el.open) el.querySelector('[data-ai-think-body]').innerHTML = host.markdown(it.text);
+      const log = q('[data-ai-log]');
+      if (log) log.scrollTop = log.scrollHeight;
+    });
   }
 
   /** ระหว่างสตรีม วาดใหม่แค่ข้อความล่าสุด ไม่เกินเฟรมละครั้ง */
@@ -189,12 +293,18 @@ function createChatView(host) {
       case 'create_label':
         return row('สี', input.color);
       default:
-        return '';
+        // เครื่องมือของปลั๊กอินอื่น: โชว์ค่าที่ส่งไปทุกช่อง
+        return name.includes('__')
+          ? Object.entries(input || {})
+              .slice(0, 12)
+              .map(([k, v]) => row(k, typeof v === 'object' ? JSON.stringify(v) : String(v)))
+              .join('')
+          : '';
     }
   }
 
-  function askApproval(name, input, signal) {
-    const item = push({ type: 'approval', label: describeCall(name, input, host.board()), detail: approvalDetail(name, input), status: 'wait' });
+  function askApproval(name, input, signal, label = describeCall(name, input, host.board())) {
+    const item = push({ type: 'approval', label, detail: approvalDetail(name, input), status: 'wait' });
     return new Promise((resolve, reject) => {
       waiting.set(item.id, (decision) => {
         item.status = decision === 'deny' ? 'denied' : 'ok';
@@ -225,42 +335,80 @@ function createChatView(host) {
     controller = new AbortController();
     const signal = controller.signal;
     push({ type: 'user', text: prompt });
-    let current = push({ type: 'assistant', text: '' });
+    let current = null; // ก้อนคำตอบที่กำลังพิมพ์ (สร้างเมื่อตัวอักษรแรกมาถึง ความคิดจะได้ขึ้นก่อน)
+    status = { label: 'กำลังเริ่ม', started: Date.now(), stepStarted: Date.now(), tools: 0 };
+    ticker = setInterval(paintStatus, 1000);
     renderChrome();
+    paintStatus();
 
-    const execute = makeExecutor(host, { allowEdits });
+    // ปลั๊กอินอื่นในบอร์ดที่ให้ AI ใช้ได้ (เช่นแผนที่ RedM) — Tanva รุ่นเก่าไม่มี pluginExports ก็ข้ามไป
+    let ext = extensionTools([]);
+    try {
+      ext = extensionTools((await host.pluginExports?.('ai')) || []);
+    } catch (err) {
+      console.error('[ai_assistant] Could not load tools from other plugins:', err);
+    }
+
+    const execute = makeExecutor(host, { allowEdits, extra: ext.byName });
+    const describe = (name, input) => describeCall(name, input, host.board(), ext.byName);
+    const closeEmptyAnswer = () => {
+      // ข้อความที่ AI พิมพ์ก่อนเรียกเครื่องมือจบตรงนี้ — ถ้ายังว่างอยู่ก็เอาออก
+      if (current && !current.text) conversation().log.splice(conversation().log.indexOf(current), 1);
+      current = null;
+    };
     const ctx = {
       model: r.model,
       effort,
-      system: systemPrompt(host.board(), { allowEdits, instructions }),
-      tools: toolsFor({ allowEdits }),
+      system: systemPrompt(host.board(), { allowEdits, instructions, guides: ext.guides }),
+      tools: toolsFor({ allowEdits, extra: ext.tools }),
       // Claude: SDK ต่อ /v1/messages เอง · เจ้าอื่น: SDK ของ OpenAI ต่อ /chat/completions ต่อจาก basePath
       proxyUrl: host.proxyUrl(r.proxy),
       baseURL: `${host.proxyUrl(r.proxy)}${r.basePath || ''}`,
       label: r.label.split(' · ')[0],
       headers: r.headers || {},
       signal,
+      onRequest() {
+        endThinking();
+        if (status) status.stepStarted = Date.now();
+        setStatus('กำลังคิด');
+      },
+      onThinkingStart() {
+        addThinking('');
+      },
+      onThinking(delta) {
+        addThinking(delta);
+      },
       onText(delta) {
+        endThinking();
         if (!current) current = push({ type: 'assistant', text: '' });
         current.text += delta;
+        setStatus('กำลังพิมพ์คำตอบ');
         paintAssistant(current);
       },
+      onToolStart() {
+        endThinking();
+        setStatus('กำลังเตรียมใช้เครื่องมือ');
+      },
       onStep() {
+        endThinking();
         current = null; // ข้อความของรอบถัดไปขึ้นเป็นก้อนใหม่ ต่อจากรายการเครื่องมือ
       },
       async runTool(name, input) {
-        // ข้อความที่ AI พิมพ์ก่อนเรียกเครื่องมือจบตรงนี้ — ถ้ายังว่างอยู่ก็เอาออก
-        if (current && !current.text) conversation().log.splice(conversation().log.indexOf(current), 1);
-        current = null;
-        const tool = TOOL_BY_NAME.get(name);
+        endThinking();
+        closeEmptyAnswer();
+        const tool = TOOL_BY_NAME.get(name) || ext.byName.get(name);
+        const label = describe(name, input);
         if (tool?.write && confirmEdits && !approveAll) {
-          const decision = await askApproval(name, input, signal);
+          setStatus(`รอคุณอนุญาต — ${label}`);
+          const decision = await askApproval(name, input, signal, label);
           if (decision === 'deny') {
             return { content: 'ผู้ใช้ไม่อนุญาตให้ทำรายการนี้ ถามผู้ใช้ก่อนว่าต้องการแบบไหน', isError: true };
           }
           if (decision === 'all') approveAll = true;
         }
-        const chip = push({ type: 'tool', label: describeCall(name, input, host.board()), status: 'run' });
+        setStatus(label);
+        if (status) status.tools++;
+        const chip = push({ type: 'tool', label, status: 'run' });
         const result = await execute(name, input);
         chip.status = result.isError ? 'error' : 'ok';
         if (result.isError) chip.detail = result.content;
@@ -276,14 +424,24 @@ function createChatView(host) {
     } catch (err) {
       push(err.aborted ? { type: 'note', text: 'หยุดแล้ว' } : { type: 'error', text: err.message });
     } finally {
+      endThinking();
       // ก้อนข้อความที่ยังว่าง (เช่นหยุดก่อน AI พิมพ์) ไม่ต้องแสดง
       const log = conversation().log;
       for (let i = log.length - 1; i >= 0; i--) if (log[i].type === 'assistant' && !log[i].text) log.splice(i, 1);
+      // สรุปท้ายคำตอบ: ใช้เวลาไปเท่าไร เรียกเครื่องมือกี่ครั้ง
+      if (status) {
+        const took = `ใช้เวลา ${duration(Date.now() - status.started)}`;
+        log.push({ id: ++conversation().seq, type: 'meta', text: status.tools ? `${took} · ใช้เครื่องมือ ${status.tools} ครั้ง` : took });
+      }
+      clearInterval(ticker);
+      ticker = 0;
+      status = null;
       busy = false;
       controller = null;
       waiting.clear();
       renderLog();
       renderChrome();
+      paintStatus();
       if (root) q('[data-ai-input]').focus();
     }
   }
@@ -305,6 +463,7 @@ function createChatView(host) {
             <button type="button" class="btn btn-sm btn-invisible" data-ai-clear title="ล้างบทสนทนาแล้วเริ่มใหม่">เริ่มใหม่</button>
           </header>
           <div class="ai-log" data-ai-log></div>
+          <div class="ai-status" data-ai-status role="status" aria-live="polite" hidden></div>
           <div class="ai-setup" data-ai-setup hidden></div>
           <form class="ai-form" data-ai-form>
             <textarea class="input" data-ai-input rows="1" maxlength="4000" title="Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่"
@@ -330,6 +489,18 @@ function createChatView(host) {
         }
       });
       input.addEventListener('input', () => autosize(input));
+      // จำว่าก้อนความคิดไหนกางไว้ วาดใหม่แล้วจะได้ไม่หุบเอง
+      root.addEventListener(
+        'toggle',
+        (e) => {
+          const id = Number(e.target.dataset?.aiThink);
+          const it = id && conversation().log.find((x) => x.id === id);
+          if (!it) return;
+          it.open = e.target.open;
+          if (it.open) e.target.querySelector('[data-ai-think-body]').innerHTML = host.markdown(it.text);
+        },
+        true
+      );
       q('[data-ai-stop]').addEventListener('click', () => controller?.abort());
       q('[data-ai-clear]').addEventListener('click', () => {
         const r = readiness(host);

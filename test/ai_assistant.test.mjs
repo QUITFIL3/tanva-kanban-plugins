@@ -3,9 +3,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TOOLS, systemPrompt, toolsFor, makeExecutor, describeCall, checklist } from '../plugins/ai_assistant/tools.js';
+import { TOOLS, systemPrompt, toolsFor, makeExecutor, describeCall, checklist, extensionTools } from '../plugins/ai_assistant/tools.js';
 import { claudeParams, toClaudeTools, explainClaudeError } from '../plugins/ai_assistant/claude.js';
-import { toOpenAITools, explainOpenAIError } from '../plugins/ai_assistant/openai.js';
+import { toOpenAITools, explainOpenAIError, reasoningOf } from '../plugins/ai_assistant/openai.js';
+import { duration, latestThought } from '../plugins/ai_assistant/index.js';
 import { PROVIDERS, resolveProvider } from '../plugins/ai_assistant/providers.js';
 import fs from 'node:fs';
 
@@ -199,7 +200,7 @@ test('คำอธิบายการกระทำสำหรับแส�
 test('Claude: opus-5 คิดแบบ adaptive และเปิดโมเดลสำรองอัตโนมัติ · Haiku ไม่ส่ง thinking/effort', () => {
   const base = { system: 's', messages: [], tools: TOOLS };
   const opus = claudeParams({ ...base, model: 'claude-opus-5', effort: 'medium' });
-  assert.deepEqual(opus.thinking, { type: 'adaptive' });
+  assert.deepEqual(opus.thinking, { type: 'adaptive', display: 'summarized' }, 'ขอสรุปความคิดมาโชว์สถานะ');
   assert.deepEqual(opus.output_config, { effort: 'medium' });
   assert.deepEqual(opus.betas, ['server-side-fallback-2026-07-01']);
   assert.equal(opus.fallbacks, 'default');
@@ -207,7 +208,7 @@ test('Claude: opus-5 คิดแบบ adaptive และเปิดโมเ�
   assert.deepEqual(opus.cache_control, { type: 'ephemeral' });
 
   const sonnet = claudeParams({ ...base, model: 'claude-sonnet-5', effort: 'default' });
-  assert.deepEqual(sonnet.thinking, { type: 'adaptive' });
+  assert.deepEqual(sonnet.thinking, { type: 'adaptive', display: 'summarized' });
   assert.equal(sonnet.output_config, undefined, 'ค่าเริ่มต้น = ไม่ส่ง effort');
   assert.equal(sonnet.fallbacks, undefined);
 
@@ -234,4 +235,79 @@ test('ข้อความผิดพลาด: ข้อความจาก
   assert.equal(explainOpenAIError({ status: 429, error: 'เรียกถี่เกินไป รอสักครู่แล้วลองใหม่' }).message, 'เรียกถี่เกินไป รอสักครู่แล้วลองใหม่');
   assert.equal(explainOpenAIError({ aborted: true }).aborted, true);
   assert.equal(explainClaudeError(new Error('boom')).message, 'boom');
+});
+
+/* ---------------- เครื่องมือจากปลั๊กอินอื่น + สถานะระหว่างทำงาน ---------------- */
+
+test('ปลั๊กอินอื่นส่งเครื่องมือ + คู่มือให้ AI ได้ (ชื่อขึ้นต้นด้วย id ปลั๊กอิน)', async () => {
+  const calls = [];
+  const ext = extensionTools([
+    {
+      id: 'redm_blips_location',
+      name: 'RedM Blips Location',
+      value: {
+        guide: 'วิธีเขียน !blip ...',
+        tools: [
+          { name: 'list_blips', description: 'List blips', parameters: { type: 'object', properties: {} }, run: async () => ({ blips: [1, 2] }) },
+          {
+            name: 'add_blip',
+            write: true,
+            description: 'Add a blip',
+            describe: (a) => `เพิ่ม blip “${a.name}” ลงการ์ด #${a.number}`,
+            run: async (a) => {
+              calls.push(a);
+              return 'เพิ่มแล้ว';
+            },
+          },
+          { name: 'Bad Name!', run: () => 1 },
+          { name: 'no_run' },
+        ],
+      },
+    },
+    { id: 'empty', name: 'Empty', value: null },
+  ]);
+  assert.deepEqual(
+    ext.tools.map((t) => t.name),
+    ['redm_blips_location__list_blips', 'redm_blips_location__add_blip'],
+    'ชื่อผิดกติกาหรือไม่มี run ถูกข้าม'
+  );
+  assert.match(ext.tools[0].description, /^\[Plugin: RedM Blips Location\] /);
+  assert.deepEqual(ext.guides, [{ name: 'RedM Blips Location', guide: 'วิธีเขียน !blip ...' }]);
+
+  // อ่านอย่างเดียว = เครื่องมือที่แก้ข้อมูลของปลั๊กอินก็ถูกซ่อนด้วย
+  assert.ok(toolsFor({ allowEdits: false, extra: ext.tools }).some((t) => t.name === 'redm_blips_location__list_blips'));
+  assert.ok(!toolsFor({ allowEdits: false, extra: ext.tools }).some((t) => t.name === 'redm_blips_location__add_blip'));
+  assert.deepEqual(Object.keys(toClaudeTools(toolsFor({ extra: ext.tools })).at(-1)), ['name', 'description', 'input_schema']);
+
+  const run = makeExecutor(null, { extra: ext.byName });
+  assert.deepEqual(await run('redm_blips_location__list_blips', {}), { content: '{"blips":[1,2]}', isError: false });
+  assert.deepEqual(await run('redm_blips_location__add_blip', { number: 3, name: 'ร้าน' }), { content: 'เพิ่มแล้ว', isError: false });
+  assert.deepEqual(calls, [{ number: 3, name: 'ร้าน' }]);
+  assert.equal((await makeExecutor(null, { allowEdits: false, extra: ext.byName })('redm_blips_location__add_blip', {})).isError, true);
+
+  assert.equal(describeCall('redm_blips_location__add_blip', { number: 3, name: 'ร้าน' }, null, ext.byName), 'RedM Blips Location: เพิ่ม blip “ร้าน” ลงการ์ด #3');
+  assert.equal(describeCall('redm_blips_location__list_blips', {}, null, ext.byName), 'RedM Blips Location: list_blips');
+
+  const board = { meta: { title: 'B' }, columns: [], cards: [], labels: [], members: [] };
+  const prompt = systemPrompt(board, { guides: ext.guides });
+  assert.match(prompt, /Plugins enabled on this board/);
+  assert.match(prompt, /## RedM Blips Location\nวิธีเขียน !blip/);
+  assert.doesNotMatch(systemPrompt(board), /Plugins enabled/, 'ไม่มีปลั๊กอิน = ไม่มีหัวข้อนี้');
+});
+
+test('สถานะ: ความคิดจาก DeepSeek/OpenRouter · เวลาที่ใช้ · ประโยคล่าสุดของความคิด', () => {
+  assert.equal(reasoningOf({ reasoning_content: 'คิดก่อน' }), 'คิดก่อน');
+  assert.equal(reasoningOf({ reasoning: 'ดูการ์ด', content: 'ตอบ' }), 'ดูการ์ด');
+  assert.equal(reasoningOf({ content: 'ตอบ' }), '');
+  assert.equal(reasoningOf({ reasoning: '   ' }), '');
+
+  assert.equal(duration(400), '1 วินาที');
+  assert.equal(duration(12_300), '12 วินาที');
+  assert.equal(duration(60_000), '1 นาที');
+  assert.equal(duration(125_000), '2 นาที 5 วินาที');
+
+  assert.equal(latestThought('**Checking the board**\n\nLooking at In Progress cards'), 'Looking at In Progress cards');
+  assert.equal(latestThought('- first\n- ดูคอลัมน์ Review'), 'ดูคอลัมน์ Review');
+  assert.equal(latestThought(''), '');
+  assert.equal(latestThought('x'.repeat(200), 20).length, 20);
 });
