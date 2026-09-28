@@ -1,0 +1,684 @@
+/* RedM Blips Location — ใช้ตัวแปรสีของธีมหลัก จึงเปลี่ยนตามโหมดมืด/สว่างเอง */
+
+.rb-wrap {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.rb-map {
+  position: relative;
+  z-index: 0; /* เก็บ z-index ของ Leaflet ไว้ในกล่องแผนที่ */
+  min-height: 0;
+  background: var(--canvas-subtle);
+}
+.rb-map.leaflet-container {
+  font: inherit;
+  background: var(--canvas-subtle);
+  outline: none;
+}
+.rb-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+/* ---- แถบข้าง ---- */
+
+.rb-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-left: 1px solid var(--border-muted);
+}
+.rb-side-head {
+  display: grid;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.rb-side-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rb-side-top strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.rb-stats {
+  flex: 1;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.rb-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.rb-list {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 8px 72px; /* เลื่อนพ้นปุ่มแชทมุมขวาล่างได้ */
+  overflow-y: auto;
+}
+.rb-empty {
+  padding: 24px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--fg-muted);
+}
+.rb-group + .rb-group {
+  margin-top: 6px;
+}
+.rb-group-head,
+.rb-item,
+.rb-problem,
+.rb-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.rb-group-head {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.rb-group-head .mono {
+  flex: none;
+  color: var(--fg-subtle);
+}
+.rb-group-title,
+.rb-item-name,
+.rb-panel-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--fg-muted);
+  background: var(--accent-subtle);
+  border-radius: 999px;
+}
+.rb-item {
+  min-height: 30px;
+  padding: 4px 8px 4px 26px;
+  font-size: 13px;
+}
+.rb-group-head:hover,
+.rb-item:hover,
+.rb-problem:hover,
+.rb-panel-item:hover {
+  background: var(--accent-subtle);
+}
+.rb-item.active {
+  background: var(--accent-subtle);
+  box-shadow: inset 2px 0 0 var(--fg);
+}
+.rb-item-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-muted);
+}
+.rb-item-tag {
+  flex: none;
+  padding: 0 6px;
+  font-size: 10.5px;
+  color: var(--fg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.rb-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.rb-problems {
+  margin-bottom: 8px;
+  padding: 8px;
+  background: var(--attention-subtle);
+  border: 1px solid var(--attention);
+  border-radius: var(--radius);
+}
+.rb-problems-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--attention);
+}
+.rb-problem {
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.rb-problem .mono {
+  color: var(--fg);
+}
+
+.rb-help {
+  padding: 10px 12px 12px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border-muted);
+}
+.rb-help summary {
+  padding-right: 72px; /* ไม่ให้ปุ่มแชทมุมขวาล่างบังหัวข้อ */
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+}
+.rb-help pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre-wrap;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius);
+}
+.rb-help p {
+  margin: 0 0 8px;
+  line-height: 1.6;
+}
+.rb-help code,
+.rb-empty code,
+.rb-panel-list code,
+.sidebar-value code {
+  padding: 0 4px;
+  font-size: 11.5px;
+  background: var(--accent-subtle);
+  border-radius: 4px;
+}
+
+/* ---- หมุดบนแผนที่ ---- */
+
+.rb-marker {
+  background: none;
+  border: 0;
+}
+.rb-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #0a0a0a;
+  background: var(--pin, #d4d4d4);
+  border: 2px solid #fafafa;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s ease;
+}
+.rb-pin svg {
+  fill: currentColor;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
+}
+.rb-pin.rb-auto {
+  border-style: dashed;
+}
+.rb-pin-dot {
+  width: 8px;
+  height: 8px;
+  background: #0a0a0a;
+  border-radius: 50%;
+}
+.rb-marker:hover .rb-pin,
+.leaflet-marker-icon:focus .rb-pin {
+  transform: scale(1.18);
+}
+
+/* ---- ป๊อปอัป / ป้ายชื่อ / ตัวควบคุมของ Leaflet ให้เข้าธีม ---- */
+
+.rb-wrap .leaflet-popup-content-wrapper {
+  color: var(--fg);
+  background: var(--canvas-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+}
+.rb-wrap .leaflet-popup-content {
+  margin: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.rb-wrap .leaflet-popup-tip {
+  background: var(--canvas-overlay);
+  box-shadow: none;
+}
+.rb-wrap .leaflet-container a.leaflet-popup-close-button {
+  top: 6px;
+  right: 6px;
+  color: var(--fg-muted);
+}
+.rb-pop {
+  display: grid;
+  gap: 8px;
+}
+.rb-pop-name {
+  padding-right: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rb-pop-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--fg);
+  background: var(--accent-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.rb-pop-card:hover {
+  border-color: var(--fg-subtle);
+}
+.rb-pop-card .mono {
+  color: var(--fg-subtle);
+}
+.rb-pop-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-pop-note {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.rb-pop-coords {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rb-pop-coords code {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  border-radius: 6px;
+}
+.rb-pop-coords button,
+.rb-pop-add {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.rb-pop-add {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.rb-pop-coords button:hover {
+  background: var(--btn-hover);
+}
+.rb-pop-add:hover {
+  background: var(--accent-hover);
+}
+.rb-pop-src {
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+}
+
+.leaflet-tooltip.rb-tip {
+  padding: 4px 8px;
+  font: 500 12px/1.4 var(--font);
+  color: var(--fg);
+  background: var(--canvas-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.leaflet-tooltip-top.rb-tip::before {
+  border-top-color: var(--border);
+}
+
+.rb-wrap .leaflet-bar {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+.rb-wrap .leaflet-bar a {
+  width: 32px;
+  height: 32px;
+  line-height: 30px;
+  color: var(--fg);
+  background: var(--canvas-overlay);
+  border-bottom-color: var(--border);
+}
+.rb-wrap .leaflet-bar a:hover {
+  background: var(--btn-hover);
+}
+.rb-wrap .leaflet-bar a.leaflet-disabled {
+  color: var(--fg-subtle);
+  background: var(--canvas-overlay);
+}
+.rb-wrap .leaflet-control-attribution {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+  background: color-mix(in srgb, var(--canvas-overlay) 82%, transparent);
+  border-top-left-radius: 6px;
+}
+.rb-wrap .leaflet-control-attribution a {
+  color: var(--fg);
+}
+.rb-readout {
+  padding: 4px 8px;
+  font: 500 11.5px/1.4 var(--font-mono);
+  color: var(--fg);
+  background: color-mix(in srgb, var(--canvas-overlay) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+
+/* ---- กล่องในหน้าการ์ด ---- */
+
+.rb-panel-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.rb-panel-item {
+  min-height: 28px;
+  padding: 3px 6px;
+  font-size: 12.5px;
+}
+.rb-panel-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--attention);
+}
+.rb-panel-warn svg {
+  flex: none;
+  margin-top: 3px;
+}
+.rb-panel-map {
+  width: 100%;
+}
+
+/* ---- จอเล็ก: แผนที่ด้านบน รายการด้านล่าง ---- */
+
+@media (max-width: 768px) {
+  .rb-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 42%);
+  }
+  .rb-side {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+  .rb-help {
+    display: none;
+  }
+}
+
+/* ---- หมุดขนาดเล็ก (แผนที่ย่อ) ---- */
+
+.rb-pin.small {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+}
+.rb-pin.small svg {
+  width: 11px;
+  height: 11px;
+}
+.rb-pin.small .rb-pin-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* ---- รายละเอียดของ blip (ใช้ทั้งป๊อปอัปและกล่องในการ์ด) ---- */
+
+.rb-fields {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.rb-fields.compact {
+  gap: 6px;
+}
+.rb-field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.rb-field dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.rb-field dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.rb-field dd code {
+  padding: 0 4px;
+  font-size: 11.5px;
+  background: var(--accent-subtle);
+  border-radius: 4px;
+}
+.rb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rb-chips li {
+  padding: 1px 8px;
+  font-size: 12px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: 999px;
+}
+.rb-sound {
+  display: grid;
+  gap: 4px;
+}
+.rb-sound + .rb-sound {
+  margin-top: 6px;
+}
+.rb-sound-name {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.rb-sound audio {
+  width: 100%;
+  max-width: 320px;
+  height: 32px;
+}
+.rb-sound.missing {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.rb-sound.missing span {
+  color: var(--attention);
+}
+.rb-wrap .leaflet-popup-content .rb-field {
+  grid-template-columns: 58px minmax(0, 1fr);
+}
+.rb-item-role {
+  display: block;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--fg-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- แผนที่ย่อ ---- */
+
+.rb-mini,
+.rb-card-map {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  isolation: isolate;
+}
+.rb-mini {
+  height: 150px;
+  margin-bottom: 8px;
+}
+.rb-mini.clickable,
+.rb-card-map.clickable {
+  cursor: zoom-in;
+}
+.rb-mini .leaflet-container,
+.rb-card-map.leaflet-container,
+.rb-mini.leaflet-container {
+  background: var(--canvas-subtle);
+}
+.rb-mini-note {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+/* ---- กล่อง blip ในเนื้อหาการ์ด (แทนบล็อก !blip) ---- */
+
+.rb-card-wrap {
+  margin: 10px 0 14px;
+}
+.rb-card {
+  overflow: hidden;
+  background: var(--canvas-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.rb-card.problem {
+  border-color: var(--attention);
+  background: var(--attention-subtle);
+}
+.rb-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.rb-card.problem .rb-card-head {
+  border-bottom: 0;
+}
+.rb-card-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+.rb-card-title strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.rb-card-sub {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.rb-card-warn {
+  display: inline-flex;
+  color: var(--attention);
+}
+.rb-card-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+}
+.rb-card-map {
+  height: 150px;
+}
+.rb-card-info {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+.rb-card-empty {
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+}
+
+@media (max-width: 768px) {
+  .rb-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* รายการชิปในกล่องรายละเอียด — ไม่เอาระยะย่อหน้าของรายการ markdown มาปน */
+.rb-fields .rb-chips,
+.markdown .rb-fields .rb-chips {
+  margin: 0;
+  padding: 0;
+}
+.rb-fields .rb-chips li,
+.markdown .rb-fields .rb-chips li {
+  margin: 0;
+  list-style: none;
+}

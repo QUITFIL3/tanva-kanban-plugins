@@ -1,0 +1,52 @@
+{
+  "id": "redm_blips_location",
+  "name": "RedM Blips Location",
+  "description": "เพิ่มแท็บแผนที่ RedM/RDR2 — ปักหมุด (blip) จากพิกัด vec2/vec3/vec4 ในการ์ด ใส่รายละเอียดได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร และดูตัวอย่างแผนที่ในหน้าการ์ดได้",
+  "version": "1.1.0",
+  "author": "QUITFIL3",
+  "homepage": "https://github.com/QUITFIL3/tanva-kanban-plugins/tree/main/plugins/redm_blips_location",
+  "entry": "index.js",
+  "styles": ["style.css"],
+  "files": ["blips.js"],
+  "views": [
+    {
+      "id": "map",
+      "label": "แผนที่",
+      "icon": "m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"
+    }
+  ],
+  "settings": [
+    {
+      "key": "autoDetect",
+      "type": "checkbox",
+      "label": "ดึงพิกัด vec2/vec3/vec4 ที่พิมพ์ไว้ในการ์ดมาปักหมุดด้วย (ไม่ต้องมี !blip)",
+      "default": true
+    },
+    {
+      "key": "tiles",
+      "type": "select",
+      "label": "แบบแผนที่",
+      "default": "auto",
+      "options": [
+        { "value": "auto", "label": "ตามธีม (สว่าง = แผนที่ละเอียด · มืด = แผนที่โหมดมืด)" },
+        { "value": "detailed", "label": "แผนที่ละเอียด (RDR2Map)" },
+        { "value": "dark", "label": "แผนที่โหมดมืด" },
+        { "value": "game", "label": "แผนที่ในเกม (Rockstar)" },
+        { "value": "custom", "label": "ใช้ URL แผนที่ของตัวเอง (ช่องด้านล่าง)" }
+      ]
+    },
+    {
+      "key": "customTiles",
+      "type": "text",
+      "label": "URL แผนที่ของตัวเอง",
+      "default": "",
+      "hint": "รูปแบบ Leaflet เช่น https://example.com/tiles/{z}/{x}_{y}.webp — ใช้เมื่อเลือก “ใช้ URL แผนที่ของตัวเอง”"
+    },
+    {
+      "key": "includeArchived",
+      "type": "checkbox",
+      "label": "แสดงหมุดจากการ์ดที่เก็บเข้าคลังแล้วด้วย",
+      "default": false
+    }
+  ]
+}

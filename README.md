@@ -1,0 +1,72 @@
+# Tanva Kanban Plugins
+
+คลังปลั๊กอินทางการของ [Tanva Kanban](https://github.com/QUITFIL3/tanva-kanban) — กดติดตั้ง อัปเดต และถอนได้จากในบอร์ดเลย
+
+[![CI](https://github.com/QUITFIL3/tanva-kanban-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/QUITFIL3/tanva-kanban-plugins/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![คลังปลั๊กอินในหน้าเว็บ](docs/images/plugin-store.png)
+
+## ปลั๊กอิน
+
+| ปลั๊กอิน | เวอร์ชัน | ทำอะไร |
+| --- | --- | --- |
+| [**RedM Blips Location**](plugins/redm_blips_location) | 1.1.0 | แท็บแผนที่ RedM/RDR2 — ปักหมุดจากพิกัด `vec2/vec3/vec4` ในการ์ด ใส่ได้ว่าจุดนี้ทำอะไร ขายอะไร มีเสียงอะไร และดูตัวอย่างแผนที่ในหน้าการ์ด |
+
+## ติดตั้ง
+
+ในบอร์ดของ Tanva Kanban (ต้องเป็นแอดมิน):
+
+1. เมนูบอร์ด → **ปลั๊กอิน / ติดตั้งเพิ่ม** (หรือปุ่มรูปปลั๊กข้างแท็บ **บอร์ด / ประวัติ**)
+2. แท็บ **ติดตั้งเพิ่ม** → กด **ติดตั้ง**
+3. ปลั๊กอินถูกเปิดใช้ในบอร์ดที่เปิดอยู่ให้ทันที — บอร์ดอื่นเปิด/ปิดและตั้งค่าเองได้จากแท็บ **ในบอร์ดนี้**
+
+![เปิด/ปิดและตั้งค่าปลั๊กอินรายบอร์ด](docs/images/plugins.png)
+
+เมื่อคลังนี้มีรุ่นใหม่ หน้าต่างปลั๊กอินจะขึ้นปุ่ม **อัปเดต** ให้เอง · รายละเอียดเพิ่มเติมอยู่ใน [คู่มือปลั๊กอินของ Tanva Kanban](https://github.com/QUITFIL3/tanva-kanban/blob/main/docs/plugins.md)
+
+## ส่งปลั๊กอินเข้าคลัง
+
+1. Fork repo นี้ แล้วสร้างโฟลเดอร์ `plugins/<id>/` — `id` ใช้ได้เฉพาะ `a-z 0-9 _ -` และต้องตรงกับ `id` ใน `manifest.json`
+   (วิธีเขียนปลั๊กอิน: [docs/plugins.md](https://github.com/QUITFIL3/tanva-kanban/blob/main/docs/plugins.md#เขียนปลั๊กอินเอง))
+2. ประกาศทุกไฟล์ที่ต้องใช้ใน `manifest.json` (`entry` `styles` `files`) — ตอนติดตั้งระบบดาวน์โหลด **เฉพาะไฟล์ที่ประกาศไว้**
+3. เพิ่มปลั๊กอินใน `registry.json` (เวอร์ชันต้องตรงกับ `manifest.json`)
+   ```json
+   {
+     "id": "my_plugin",
+     "name": "My Plugin",
+     "description": "ทำอะไร",
+     "version": "1.0.0",
+     "author": "<GitHub username>",
+     "tags": ["tag"],
+     "homepage": "https://github.com/QUITFIL3/tanva-kanban-plugins/tree/main/plugins/my_plugin",
+     "path": "plugins/my_plugin"
+   }
+   ```
+4. ใส่ `README.md` ในโฟลเดอร์ปลั๊กอิน บอกว่าทำอะไรและใช้ยังไง
+5. ตรวจก่อนส่ง แล้วเปิด pull request
+   ```bash
+   npm run validate   # registry.json ตรงกับ manifest, ไฟล์ครบ, ชื่อไฟล์และขนาดผ่านกฎเดียวกับตอนติดตั้ง
+   npm test           # เทสต์ของปลั๊กอิน (ถ้ามี — วางไว้ที่ test/<id>.test.mjs)
+   ```
+
+**กติกาของคลัง**
+
+- ไฟล์ละไม่เกิน 2 MB รวมไม่เกิน 10 MB ต่อปลั๊กอิน · ไม่มีโฟลเดอร์ย่อย
+- ห้ามส่งข้อมูลของผู้ใช้ออกไปนอกเซิร์ฟเวอร์โดยไม่บอกไว้ชัด ๆ ใน README
+- ไลบรารีภายนอกโหลดจาก CDN ที่เชื่อถือได้และระบุเวอร์ชันให้ชัด (เช่น `https://cdn.jsdelivr.net/npm/leaflet@1.9.4/…`)
+- อัปเดตปลั๊กอิน = ขยับ `version` ทั้งใน `manifest.json` และ `registry.json`
+
+> ปลั๊กอินรันบนเบราว์เซอร์ของทุกคนที่เปิดบอร์ด ทุก pull request จึงถูกอ่านโค้ดก่อน merge
+
+## ใช้คลังของตัวเอง
+
+Fork repo นี้ แล้วตั้งใน `.env` ของ Tanva Kanban
+
+```ini
+PLUGIN_REGISTRY_URL=https://raw.githubusercontent.com/<you>/tanva-kanban-plugins/main/registry.json
+```
+
+## License
+
+[MIT](LICENSE) © QUITFIL3 — ปลั๊กอินแต่ละตัวใช้ license เดียวกับคลัง เว้นแต่ระบุไว้ในโฟลเดอร์ของปลั๊กอินนั้น
