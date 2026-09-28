@@ -19,13 +19,15 @@
     {
       "id": "ai_assistant",
       "name": "AI Assistant",
-      "description": "ผู้ช่วย AI สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) ใช้ได้ทั้ง Claude และ OpenAI",
-      "version": "1.0.0",
+      "description": "ผู้ช่วย AI แผงด้านขวาของจอ สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) ใช้ได้หลายเจ้า: Claude, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Mistral, xAI",
+      "version": "1.1.0",
       "author": "QUITFIL3",
       "tags": [
         "ai",
         "claude",
-        "openai"
+        "openai",
+        "openrouter",
+        "gemini"
       ],
       "homepage": "https://github.com/QUITFIL3/tanva-kanban-plugins/tree/main/plugins/ai_assistant",
       "path": "plugins/ai_assistant"

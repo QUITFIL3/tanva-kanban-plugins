@@ -1,13 +1,15 @@
 /**
- * ผู้ช่วย AI สำหรับ Tanva Kanban — สั่งงานบอร์ดด้วยภาษาคน (Claude หรือ OpenAI)
+ * ผู้ช่วย AI สำหรับ Tanva Kanban — สั่งงานบอร์ดด้วยภาษาคน
+ * ใช้ได้หลายเจ้า: Claude, OpenAI, OpenRouter, Google Gemini, Groq, DeepSeek, Mistral, xAI (ดู providers.js)
  *
- * - แท็บ "ผู้ช่วย AI": แชทกับ AI ที่อ่าน/สร้าง/แก้/ย้ายการ์ดได้ผ่านเครื่องมือใน tools.js
+ * - แผงด้านขวาของจอ "ผู้ช่วย AI": เปิดค้างไว้ข้างบอร์ด/แผนที่ได้ อ่าน/สร้าง/แก้/ย้ายการ์ดผ่านเครื่องมือใน tools.js
  * - การแก้บอร์ดทุกครั้งใช้สิทธิ์ของคนที่สั่ง และ (ค่าเริ่มต้น) ต้องกดอนุญาตก่อน
  * - API key อยู่ที่เซิร์ฟเวอร์ (แอดมินตั้งในหน้าตั้งค่าปลั๊กอิน) — เบราว์เซอร์คุยผ่าน proxy เท่านั้น
  */
 import { TOOL_BY_NAME, systemPrompt, toolsFor, makeExecutor, describeCall } from './tools.js';
-import { runClaudeTurn, CLAUDE_MODELS } from './claude.js';
+import { runClaudeTurn } from './claude.js';
 import { runOpenAITurn } from './openai.js';
+import { resolveProvider } from './providers.js';
 
 const SPARKLE =
   'M7.198.57c.275-.752 1.34-.752 1.615 0l.849 2.317a5.819 5.819 0 0 0 3.462 3.463l2.317.848c.753.275.753 1.34 0 1.615l-2.317.849a5.815 5.815 0 0 0-3.462 3.462l-.849 2.317c-.275.753-1.34.753-1.615 0l-.848-2.317a5.819 5.819 0 0 0-3.463-3.462L.57 8.813c-.752-.275-.752-1.34 0-1.615l2.317-.848A5.823 5.823 0 0 0 6.35 2.887L7.198.57Z';
@@ -28,21 +30,13 @@ const QUICK = {
 
 /** บทสนทนาแยกตามบอร์ด — อยู่จนกว่าจะรีเฟรชหน้าหรือกด "เริ่มใหม่" */
 const conversations = new Map();
-let pendingPrompt = null; // คำสั่งจากปุ่มในหน้าการ์ด รอส่งเมื่อเปิดแท็บ
+let pendingPrompt = null; // คำสั่งจากปุ่มในหน้าการ์ด รอส่งเมื่อเปิดแผง
 
 /** ผู้ให้บริการ/โมเดลที่บอร์ดนี้เลือก และพร้อมใช้หรือยัง (แอดมินตั้งคีย์แล้วหรือยัง) */
 function readiness(host) {
-  const s = host.settings();
-  const provider = s.provider === 'openai' ? 'openai' : 'claude';
-  const secretKey = provider === 'openai' ? 'openai_api_key' : 'anthropic_api_key';
-  const model = provider === 'openai' ? String(s.openaiModel || 'gpt-5-mini').trim() : s.claudeModel || 'claude-opus-5';
-  return {
-    provider,
-    model,
-    label: provider === 'openai' ? `OpenAI · ${model}` : CLAUDE_MODELS[model] || model,
-    ready: Boolean(host.secretsSet()[secretKey]),
-    settings: s,
-  };
+  const settings = host.settings();
+  const p = resolveProvider(settings, host.secretsSet());
+  return { ...p, provider: p.id, label: p.title, settings };
 }
 
 function freshConversation(provider, model) {
@@ -163,7 +157,7 @@ function createChatView(host) {
     const setup = q('[data-ai-setup]');
     setup.hidden = r.ready;
     if (!r.ready) {
-      const name = r.provider === 'openai' ? 'OpenAI' : 'Claude (Anthropic)';
+      const name = r.kind === 'anthropic' ? 'Claude (Anthropic)' : r.label.split(' · ')[0];
       setup.innerHTML = me?.isAdmin
         ? `ยังไม่ได้ตั้ง API key ของ ${name} <button type="button" class="btn btn-sm btn-primary" data-ai-open-settings>ตั้งค่าคีย์</button>`
         : `ยังไม่ได้ตั้ง API key ของ ${name} — ขอให้แอดมินตั้งที่ เมนูบอร์ด → ปลั๊กอิน → AI Assistant`;
@@ -240,7 +234,11 @@ function createChatView(host) {
       effort,
       system: systemPrompt(host.board(), { allowEdits, instructions }),
       tools: toolsFor({ allowEdits }),
-      proxyUrl: host.proxyUrl(r.provider === 'openai' ? 'openai' : 'anthropic'),
+      // Claude: SDK ต่อ /v1/messages เอง · เจ้าอื่น: SDK ของ OpenAI ต่อ /chat/completions ต่อจาก basePath
+      proxyUrl: host.proxyUrl(r.proxy),
+      baseURL: `${host.proxyUrl(r.proxy)}${r.basePath || ''}`,
+      label: r.label.split(' · ')[0],
+      headers: r.headers || {},
       signal,
       onText(delta) {
         if (!current) current = push({ type: 'assistant', text: '' });
@@ -272,7 +270,7 @@ function createChatView(host) {
     };
 
     try {
-      const run = r.provider === 'openai' ? runOpenAITurn : runClaudeTurn;
+      const run = r.kind === 'anthropic' ? runClaudeTurn : runOpenAITurn;
       const outcome = await run(c.session, prompt, ctx);
       if (outcome?.refused) push({ type: 'error', text: 'AI ปฏิเสธคำขอนี้ ลองเรียบเรียงคำสั่งใหม่' });
     } catch (err) {
@@ -303,18 +301,18 @@ function createChatView(host) {
       root.innerHTML = `
         <div class="ai-wrap">
           <header class="ai-head">
-            <div class="ai-title">${svg(SPARKLE)} ผู้ช่วย AI <span class="ai-model" data-ai-model></span></div>
-            <button type="button" class="btn btn-sm btn-invisible" data-ai-clear>เริ่มบทสนทนาใหม่</button>
+            <span class="ai-model" data-ai-model></span>
+            <button type="button" class="btn btn-sm btn-invisible" data-ai-clear title="ล้างบทสนทนาแล้วเริ่มใหม่">เริ่มใหม่</button>
           </header>
           <div class="ai-log" data-ai-log></div>
           <div class="ai-setup" data-ai-setup hidden></div>
           <form class="ai-form" data-ai-form>
-            <textarea class="input" data-ai-input rows="1" maxlength="4000"
-              placeholder="สั่งงานได้เลย เช่น “ย้ายการ์ดที่เสร็จแล้วไป Done” (Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่)"></textarea>
+            <textarea class="input" data-ai-input rows="1" maxlength="4000" title="Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่"
+              placeholder="สั่งงานได้เลย เช่น “ย้ายการ์ดที่เสร็จแล้วไป Done”"></textarea>
             <button type="submit" class="btn btn-primary" data-ai-send>ส่ง</button>
             <button type="button" class="btn" data-ai-stop hidden>หยุด</button>
           </form>
-          <p class="ai-foot">AI อาจผิดพลาดได้ ตรวจสอบก่อนใช้งาน · ทุกการแก้บอร์ดบันทึกในแท็บประวัติด้วยชื่อคุณ</p>
+          <p class="ai-foot">AI อาจผิดพลาดได้ · ทุกการแก้บอร์ดบันทึกในประวัติด้วยชื่อคุณ</p>
         </div>`;
 
       const input = q('[data-ai-input]');
@@ -390,7 +388,8 @@ function createChatView(host) {
 
 export default function setup(host) {
   return {
-    views: { chat: createChatView(host) },
+    // แผงด้านขวาของจอ — เปิด/ปิดจากปุ่มรูปดาวบนหัวเว็บ ใช้คู่กับบอร์ด/แผนที่/ประวัติได้
+    panels: { assistant: createChatView(host) },
 
     /** ปุ่มลัดในหน้าการ์ด: ส่งคำสั่งเกี่ยวกับการ์ดใบนี้ไปที่แท็บผู้ช่วย */
     cardPanel(section, card) {
@@ -405,7 +404,8 @@ export default function setup(host) {
         if (!btn) return;
         pendingPrompt = QUICK[btn.dataset.aiQuick](card.number);
         host.closeCard();
-        host.openView('chat');
+        host.openPanel('assistant'); // เปิดแล้วส่งคำสั่งให้เอง (ถ้าเปิดอยู่แล้ว update() จะหยิบไปส่ง)
+        host.refresh?.();
       });
     },
   };

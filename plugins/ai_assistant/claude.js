@@ -14,12 +14,6 @@ const ADAPTIVE = /^claude-(opus|sonnet|fable)-/;
 // รุ่นที่เปิดให้เซิร์ฟเวอร์ลองโมเดลสำรองให้เองเมื่อโดนตัวกรองความปลอดภัยปฏิเสธ
 const WITH_FALLBACK = new Set(['claude-opus-5', 'claude-fable-5-1']);
 
-export const CLAUDE_MODELS = {
-  'claude-opus-5': 'Claude Opus 5',
-  'claude-sonnet-5': 'Claude Sonnet 5',
-  'claude-haiku-4-5': 'Claude Haiku 4.5',
-};
-
 let sdk = null;
 const loadSdk = () => (sdk ||= import(SDK_URL));
 

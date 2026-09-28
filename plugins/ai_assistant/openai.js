@@ -1,8 +1,8 @@
 /**
- * ต่อกับ OpenAI ผ่าน SDK ทางการ (openai) — Chat Completions + function calling
+ * ต่อกับผู้ให้บริการที่ใช้ API แบบ OpenAI (Chat Completions + function calling) ผ่าน SDK ทางการของ OpenAI
+ * — OpenAI เอง, OpenRouter, Google Gemini, Groq, DeepSeek, Mistral, xAI ใช้โค้ดชุดเดียวกัน ต่างกันแค่ baseURL
  *
- * เหมือนฝั่ง Claude: เบราว์เซอร์ไม่มีคีย์ SDK ยิงไปที่ proxy ของเซิร์ฟเวอร์ Tanva
- * แล้วเซิร์ฟเวอร์เติม Authorization: Bearer <คีย์ที่แอดมินตั้ง> ก่อนส่งต่อไป api.openai.com
+ * เบราว์เซอร์ไม่มีคีย์: SDK ยิงไปที่ proxy ของเซิร์ฟเวอร์ Tanva แล้วเซิร์ฟเวอร์เติม Authorization ให้
  */
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/openai@7.23.0/+esm';
@@ -14,16 +14,17 @@ const loadSdk = () => (sdk ||= import(SDK_URL));
 export const toOpenAITools = (tools) =>
   tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
 
-export function explainOpenAIError(err, OpenAI) {
+export function explainOpenAIError(err, OpenAI, label = 'OpenAI') {
   if (err?.aborted || (OpenAI && err instanceof OpenAI.APIUserAbortError)) return { aborted: true, message: 'หยุดแล้ว' };
   const raw = err?.error;
   if (typeof raw === 'string') return { message: raw }; // ข้อความจาก proxy ของ Tanva เอง
   if (raw && typeof raw.error === 'string') return { message: raw.error };
   const upstream = raw?.message;
   if (OpenAI) {
-    if (err instanceof OpenAI.AuthenticationError) return { message: 'API key ของ OpenAI ใช้ไม่ได้ — ให้แอดมินตรวจคีย์ในหน้าตั้งค่าปลั๊กอิน' };
-    if (err instanceof OpenAI.NotFoundError) return { message: `ไม่พบโมเดลนี้${upstream ? `: ${upstream}` : ''}` };
-    if (err instanceof OpenAI.RateLimitError) return { message: 'OpenAI ถูกเรียกถี่เกินโควตา (หรือเครดิตหมด) รอสักครู่แล้วลองใหม่' };
+    if (err instanceof OpenAI.AuthenticationError) return { message: `API key ของ ${label} ใช้ไม่ได้ — ให้แอดมินตรวจคีย์ในหน้าตั้งค่าปลั๊กอิน` };
+    if (err instanceof OpenAI.PermissionDeniedError) return { message: `บัญชี ${label} ไม่มีสิทธิ์ใช้งานนี้${upstream ? `: ${upstream}` : ''}` };
+    if (err instanceof OpenAI.NotFoundError) return { message: `${label} ไม่พบโมเดลนี้${upstream ? `: ${upstream}` : ''}` };
+    if (err instanceof OpenAI.RateLimitError) return { message: `${label} ถูกเรียกถี่เกินโควตา (หรือเครดิตหมด) รอสักครู่แล้วลองใหม่` };
     if (err instanceof OpenAI.APIConnectionError) return { message: 'เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง' };
     if (err instanceof OpenAI.APIError) return { message: upstream || err.message };
   }
@@ -31,14 +32,15 @@ export function explainOpenAIError(err, OpenAI) {
 }
 
 /**
- * คุยหนึ่งรอบ — session.messages เก็บประวัติรูปแบบของ OpenAI (ไม่รวม system ซึ่งสร้างใหม่ทุกครั้งจากสถานะบอร์ด)
- * ctx: { model, system, tools, proxyUrl, signal, onText(delta), onStep(), runTool(name, input, id) }
+ * คุยหนึ่งรอบ — session.messages เก็บประวัติรูปแบบ OpenAI (ไม่รวม system ซึ่งสร้างใหม่ทุกครั้งจากสถานะบอร์ด)
+ * ctx: { model, system, tools, baseURL, label, headers, signal, onText(delta), onStep(), runTool(name, input, id) }
  */
 export async function runOpenAITurn(session, userText, ctx) {
   const { default: OpenAI } = await loadSdk();
   const client = new OpenAI({
     apiKey: 'set-by-server', // เซิร์ฟเวอร์ทิ้งค่านี้แล้วใส่คีย์จริงให้
-    baseURL: `${ctx.proxyUrl}/v1`,
+    baseURL: ctx.baseURL,
+    defaultHeaders: ctx.headers || {},
     dangerouslyAllowBrowser: true, // ปลอดภัยเพราะไม่มีคีย์จริงอยู่ในเบราว์เซอร์
     maxRetries: 1,
   });
@@ -59,7 +61,7 @@ export async function runOpenAITurn(session, userText, ctx) {
       );
       const choice = completion.choices?.[0];
       const msg = choice?.message;
-      if (!msg) throw new Error('ไม่ได้รับคำตอบจาก OpenAI');
+      if (!msg) throw new Error(`ไม่ได้รับคำตอบจาก ${ctx.label || 'ผู้ให้บริการ'}`);
       if (msg.refusal) {
         ctx.onText(msg.refusal);
         session.messages.push({ role: 'assistant', content: msg.refusal });
@@ -98,7 +100,7 @@ export async function runOpenAITurn(session, userText, ctx) {
     } else if (session.messages.length === start + 1) {
       session.messages.pop();
     }
-    const info = explainOpenAIError(err, OpenAI);
+    const info = explainOpenAIError(err, OpenAI, ctx.label);
     throw Object.assign(new Error(info.message), { aborted: Boolean(info.aborted) });
   }
 }

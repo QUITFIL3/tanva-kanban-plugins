@@ -1,31 +1,29 @@
 {
   "id": "ai_assistant",
   "name": "AI Assistant",
-  "description": "ผู้ช่วย AI สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) ใช้ได้ทั้ง Claude และ OpenAI แอดมินตั้ง API key ครั้งเดียว เก็บที่เซิร์ฟเวอร์",
-  "version": "1.0.0",
+  "description": "ผู้ช่วย AI แผงด้านขวาของจอ สั่งงานบอร์ดด้วยภาษาคน — สรุปงาน ค้นการ์ด สร้าง/แก้/ย้ายการ์ด (ถามก่อนแก้ทุกครั้ง) ใช้ได้หลายเจ้า: Claude, OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Mistral, xAI · แอดมินตั้ง API key ครั้งเดียว เก็บที่เซิร์ฟเวอร์",
+  "version": "1.1.0",
   "author": "QUITFIL3",
   "homepage": "https://github.com/QUITFIL3/tanva-kanban-plugins/tree/main/plugins/ai_assistant",
   "entry": "index.js",
   "styles": ["style.css"],
-  "files": ["tools.js", "claude.js", "openai.js"],
-  "views": [
+  "files": ["tools.js", "providers.js", "claude.js", "openai.js"],
+  "panels": [
     {
-      "id": "chat",
+      "id": "assistant",
       "label": "ผู้ช่วย AI",
       "icon": "M7.198.57c.275-.752 1.34-.752 1.615 0l.849 2.317a5.819 5.819 0 0 0 3.462 3.463l2.317.848c.753.275.753 1.34 0 1.615l-2.317.849a5.815 5.815 0 0 0-3.462 3.462l-.849 2.317c-.275.753-1.34.753-1.615 0l-.848-2.317a5.819 5.819 0 0 0-3.463-3.462L.57 8.813c-.752-.275-.752-1.34 0-1.615l2.317-.848A5.823 5.823 0 0 0 6.35 2.887L7.198.57Z"
     }
   ],
   "secrets": [
-    {
-      "key": "anthropic_api_key",
-      "label": "Anthropic API key (Claude)",
-      "hint": "ขึ้นต้นด้วย sk-ant- · สร้างได้ที่ console.anthropic.com"
-    },
-    {
-      "key": "openai_api_key",
-      "label": "OpenAI API key",
-      "hint": "ขึ้นต้นด้วย sk- · สร้างได้ที่ platform.openai.com"
-    }
+    { "key": "anthropic_api_key", "label": "Anthropic API key (Claude)", "hint": "ขึ้นต้นด้วย sk-ant- · console.anthropic.com" },
+    { "key": "openai_api_key", "label": "OpenAI API key", "hint": "ขึ้นต้นด้วย sk- · platform.openai.com" },
+    { "key": "openrouter_api_key", "label": "OpenRouter API key", "hint": "ขึ้นต้นด้วย sk-or- · openrouter.ai/keys — คีย์เดียวใช้ได้หลายร้อยโมเดล" },
+    { "key": "gemini_api_key", "label": "Google Gemini API key", "hint": "aistudio.google.com/apikey" },
+    { "key": "groq_api_key", "label": "Groq API key", "hint": "ขึ้นต้นด้วย gsk_ · console.groq.com/keys" },
+    { "key": "deepseek_api_key", "label": "DeepSeek API key", "hint": "platform.deepseek.com/api_keys" },
+    { "key": "mistral_api_key", "label": "Mistral API key", "hint": "console.mistral.ai/api-keys" },
+    { "key": "xai_api_key", "label": "xAI API key (Grok)", "hint": "ขึ้นต้นด้วย xai- · console.x.ai" }
   ],
   "proxy": {
     "anthropic": {
@@ -37,8 +35,38 @@
     "openai": {
       "url": "https://api.openai.com",
       "paths": ["/v1/chat/completions"],
-      "headers": { "authorization": "Bearer {{openai_api_key}}" },
-      "forwardHeaders": []
+      "headers": { "authorization": "Bearer {{openai_api_key}}" }
+    },
+    "openrouter": {
+      "url": "https://openrouter.ai",
+      "paths": ["/api/v1/chat/completions"],
+      "headers": { "authorization": "Bearer {{openrouter_api_key}}" },
+      "forwardHeaders": ["x-title", "http-referer"]
+    },
+    "gemini": {
+      "url": "https://generativelanguage.googleapis.com",
+      "paths": ["/v1beta/openai/chat/completions"],
+      "headers": { "authorization": "Bearer {{gemini_api_key}}" }
+    },
+    "groq": {
+      "url": "https://api.groq.com",
+      "paths": ["/openai/v1/chat/completions"],
+      "headers": { "authorization": "Bearer {{groq_api_key}}" }
+    },
+    "deepseek": {
+      "url": "https://api.deepseek.com",
+      "paths": ["/v1/chat/completions"],
+      "headers": { "authorization": "Bearer {{deepseek_api_key}}" }
+    },
+    "mistral": {
+      "url": "https://api.mistral.ai",
+      "paths": ["/v1/chat/completions"],
+      "headers": { "authorization": "Bearer {{mistral_api_key}}" }
+    },
+    "xai": {
+      "url": "https://api.x.ai",
+      "paths": ["/v1/chat/completions"],
+      "headers": { "authorization": "Bearer {{xai_api_key}}" }
     }
   },
   "settings": [
@@ -49,7 +77,13 @@
       "default": "claude",
       "options": [
         { "value": "claude", "label": "Claude (Anthropic)" },
-        { "value": "openai", "label": "OpenAI" }
+        { "value": "openai", "label": "OpenAI" },
+        { "value": "openrouter", "label": "OpenRouter — หลายร้อยโมเดลในคีย์เดียว" },
+        { "value": "gemini", "label": "Google Gemini" },
+        { "value": "groq", "label": "Groq" },
+        { "value": "deepseek", "label": "DeepSeek" },
+        { "value": "mistral", "label": "Mistral" },
+        { "value": "xai", "label": "xAI (Grok)" }
       ]
     },
     {
@@ -76,11 +110,11 @@
       ]
     },
     {
-      "key": "openaiModel",
+      "key": "model",
       "type": "text",
-      "label": "โมเดล OpenAI",
-      "default": "gpt-5-mini",
-      "hint": "ใช้เมื่อเลือกผู้ให้บริการเป็น OpenAI · ชื่อโมเดลตามหน้า platform.openai.com/docs/models"
+      "label": "โมเดล (ผู้ให้บริการอื่นนอกจาก Claude)",
+      "default": "",
+      "hint": "เว้นว่าง = ใช้โมเดลแนะนำของเจ้านั้น · OpenRouter ใส่แบบ anthropic/claude-sonnet-4.5 หรือ google/gemini-2.5-pro ได้"
     },
     {
       "key": "allowEdits",

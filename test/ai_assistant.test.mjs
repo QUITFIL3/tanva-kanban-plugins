@@ -6,6 +6,44 @@ import assert from 'node:assert/strict';
 import { TOOLS, systemPrompt, toolsFor, makeExecutor, describeCall, checklist } from '../plugins/ai_assistant/tools.js';
 import { claudeParams, toClaudeTools, explainClaudeError } from '../plugins/ai_assistant/claude.js';
 import { toOpenAITools, explainOpenAIError } from '../plugins/ai_assistant/openai.js';
+import { PROVIDERS, resolveProvider } from '../plugins/ai_assistant/providers.js';
+import fs from 'node:fs';
+
+test('เลือกผู้ให้บริการ: ค่าเริ่มต้น Claude, เจ้าอื่นใช้โมเดลแนะนำเมื่อเว้นว่าง และพร้อมใช้เมื่อตั้งคีย์ของเจ้านั้นแล้ว', () => {
+  const claude = resolveProvider({}, {});
+  assert.equal(claude.id, 'claude');
+  assert.equal(claude.model, 'claude-opus-5');
+  assert.equal(claude.title, 'Claude Opus 5');
+  assert.equal(claude.ready, false);
+
+  const router = resolveProvider({ provider: 'openrouter', model: '' }, { openrouter_api_key: true, anthropic_api_key: false });
+  assert.equal(router.kind, 'openai');
+  assert.equal(router.model, 'openrouter/auto');
+  assert.equal(router.basePath, '/api/v1');
+  assert.equal(router.ready, true);
+  assert.equal(router.title, 'OpenRouter · openrouter/auto');
+
+  const custom = resolveProvider({ provider: 'gemini', model: ' gemini-2.5-pro ' }, {});
+  assert.equal(custom.model, 'gemini-2.5-pro');
+  assert.equal(custom.ready, false);
+  assert.equal(resolveProvider({ provider: 'no-such' }).id, 'claude', 'ค่ามั่วกลับไปใช้ Claude');
+  assert.equal(resolveProvider({ provider: 'openai', openaiModel: 'gpt-old' }).model, 'gpt-old', 'ค่าตั้งแบบเดิม (1.0) ยังใช้ได้');
+});
+
+test('ทุกผู้ให้บริการมีค่าลับและ proxy ใน manifest ตรงกับ basePath ที่ SDK จะเรียก', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../plugins/ai_assistant/manifest.json', import.meta.url), 'utf8'));
+  const secrets = new Set(manifest.secrets.map((s) => s.key));
+  const options = manifest.settings.find((s) => s.key === 'provider').options.map((o) => o.value);
+  assert.deepEqual(options.sort(), Object.keys(PROVIDERS).sort());
+  for (const [id, p] of Object.entries(PROVIDERS)) {
+    assert.ok(secrets.has(p.secret), `${id}: ไม่มีค่าลับ ${p.secret}`);
+    const route = manifest.proxy[p.proxy];
+    assert.ok(route, `${id}: ไม่มี proxy ${p.proxy}`);
+    const expected = p.kind === 'anthropic' ? '/v1/messages' : `${p.basePath}/chat/completions`;
+    assert.ok(route.paths.includes(expected), `${id}: SDK จะเรียก ${expected} แต่ manifest ประกาศ ${route.paths}`);
+    assert.ok(Object.values(route.headers).join(' ').includes(`{{${p.secret}}}`), `${id}: ส่วนหัวไม่ได้ใช้คีย์ของตัวเอง`);
+  }
+});
 
 function fakeBoard() {
   return {
